@@ -65,7 +65,7 @@ client.on('messageCreate', async (message) => {
         try {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Analyze if the following text contains extreme toxicity, severe slurs, harassment, or grooming behavior. Reply with only one word: 'SAFE' or 'TOXIC'.\nText: {message.content}`
+                contents: `Analyze if the following text contains extreme toxicity, severe slurs, harassment, or grooming behavior. Reply with only one word: 'SAFE' or 'TOXIC'.\nText: ${message.content}`
             });
 
             if (response.text && response.text.toUpperCase().includes('TOXIC')) {
@@ -97,7 +97,7 @@ async function handleInfraction(member, channel, reason) {
         }
     } else if (currentCount >= 3) {
         try {
-            await member.ban({ reason: `Automated System: Exceeded max infractions. Reason: {reason}` });
+            await member.ban({ reason: `Automated System: Exceeded max infractions. Reason: ${reason}` });
             await channel.send(`🔨 **${member.user.username}** has been permanently banned for reaching max infractions.`);
         } catch (err) {
             await channel.send(`❌ Failed to execute system ban on ${member.user.username}. Check bot permissions hierarchy.`);
@@ -116,10 +116,12 @@ client.on('ready', async () => {
         new SlashCommandBuilder().setName('help').setDescription('Displays a guide listing all available commands.'),
         new SlashCommandBuilder().setName('afk').setDescription('Set your status to AFK.').addStringOption(opt => opt.setName('reason').setDescription('Why are you going away?')),
         new SlashCommandBuilder().setName('search').setDescription('Query Gemini AI to search patterns or answer questions.').addStringOption(opt => opt.setName('query').setDescription('The prompt to send to Gemini').setRequired(true)),
-        new SlashCommandBuilder().setName('status').setDescription('[OWNER ONLY] Display current bot execution analytics dashboard.'),
         new SlashCommandBuilder().setName('avatar').setDescription('Fetches a users profile image.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)),
         new SlashCommandBuilder().setName('userinfo').setDescription('Displays technical metadata regarding a user account.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)),
         new SlashCommandBuilder().setName('serverinfo').setDescription('Shows an analytical data snapshot of the current server.'),
+        
+        // Owner Presence Status Update Command
+        new SlashCommandBuilder().setName('status').setDescription('[OWNER ONLY] Dynamically update the bot\'s custom playing status.').addStringOption(opt => opt.setName('text').setDescription('The new status text for the bot').setRequired(true)),
 
         // Moderation Core - Guarded with explicit native Discord Application Permissions
         new SlashCommandBuilder().setName('history').setDescription('Displays a specified users session infractions.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
@@ -165,7 +167,8 @@ client.on('interactionCreate', async (interaction) => {
             .addFields(
                 { name: '🌐 General Utilities', value: '`/help`, `/afk`, `/search`, `/avatar`, `/userinfo`, `/serverinfo`', inline: false },
                 { name: '🛡️ Moderation Desk', value: '`/history`, `/warn`, `/mute`, `/unmute`, `/warnclear`, `/kick`, `/ban`, `/unban`', inline: false },
-                { name: '🧹 Management & Filters', value: '`/purge`, `/lock`, `/unlock`, `/slowmode`, `/filteradd`, `/filterlist`', inline: false }
+                { name: '🧹 Management & Filters', value: '`/purge`, `/lock`, `/unlock`, `/slowmode`, `/filteradd`, `/filterlist`', inline: false },
+                { name: '⚙️ Owner Only', value: '`/status`', inline: false }
             );
         return interaction.reply({ embeds: [helpEmbed] });
     }
@@ -190,16 +193,19 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // --- /status ---
+    // --- /status [OWNER ONLY] ---
     if (commandName === 'status') {
-        if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: '⛔ Security Fault: Reserved for deployment bot owner.', ephemeral: true });
-        const embed = new EmbedBuilder().setTitle('⚙️ Diagnostics Panel').setColor(0x57F287)
-            .addFields(
-                { name: 'Ping Latency', value: `\`${client.ws.ping}ms\``, inline: true },
-                { name: 'Guild Size', value: `\`${client.guilds.cache.size}\``, inline: true },
-                { name: 'AFK Memory Tracker', value: `\`${afkUsers.size}\``, inline: true }
-            );
-        return interaction.reply({ embeds: [embed] });
+        if (interaction.user.id !== OWNER_ID) {
+            return interaction.reply({ content: '⛔ Security Fault: This command is strictly reserved for the bot owner.', ephemeral: true });
+        }
+
+        const statusText = options.getString('text');
+        try {
+            client.user.setActivity(statusText, { type: 0 }); // Type 0 sets activity type to "Playing"
+            return interaction.reply({ content: `✅ Bot profile status successfully updated to: **Playing ${statusText}**` });
+        } catch (err) {
+            return interaction.reply({ content: `⚠️ Failed to update profile presence activity: ${err.message}`, ephemeral: true });
+        }
     }
 
     // --- /avatar ---
@@ -214,7 +220,7 @@ client.on('interactionCreate', async (interaction) => {
         const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
         const embed = new EmbedBuilder().setTitle(`👤 Trace Details: ${targetUser.username}`).setColor(0x9B59B6)
             .addFields(
-                { name: 'User ID ID', value: `\`${targetUser.id}\``, inline: true },
+                { name: 'User ID', value: `\`${targetUser.id}\``, inline: true },
                 { name: 'Created Profile', value: `<t:${Math.floor(targetUser.createdTimestamp / 1000)}:R>`, inline: true },
                 { name: 'Server Joined', value: targetMember ? `<t:${Math.floor(targetMember.joinedTimestamp / 1000)}:R>` : 'Not in server', inline: true }
             );
