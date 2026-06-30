@@ -1,2 +1,0 @@
-py-cord==2.6.1
-google-genai==0.1.1

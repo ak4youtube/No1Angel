@@ -1,0 +1,14 @@
+{
+  "name": "complete-mod-bot",
+  "version": "1.0.0",
+  "description": "Discord Mod and AI Search Bot",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^0.1.5",
+    "discord.js": "^14.15.3"
+  }
+}
