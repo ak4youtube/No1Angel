@@ -8,6 +8,11 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const OWNER_ID = process.env.OWNER_ID;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
+// Parse bypass roles into an array of strings (removes white spaces)
+const BYPASS_ROLE_IDS = process.env.BYPASS_ROLE_IDS 
+    ? process.env.BYPASS_ROLE_IDS.split(',').map(id => id.trim()) 
+    : [];
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -17,7 +22,7 @@ const client = new Client({
     ]
 });
 
-// Setup official Google Gen AI Client
+// Setup official Google Gen AI Client for background auto-mod features
 const ai = GEMINI_KEY ? new GoogleGenAI({ apiKey: GEMINI_KEY }) : null;
 
 // In-memory runtime tracking caches
@@ -50,6 +55,10 @@ client.on('messageCreate', async (message) => {
         });
     }
 
+    // --- Bypass Check for Auto-Mods ---
+    const hasBypassRole = message.member?.roles.cache.some(role => BYPASS_ROLE_IDS.includes(role.id));
+    if (hasBypassRole) return;
+
     // --- Pillar 2: Word Filters ---
     const contentLower = message.content.toLowerCase();
     const containsBadWord = Array.from(dynamicBannedWords).some(word => contentLower.includes(word));
@@ -78,7 +87,7 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// --- Pillar 4: Graduated Escalation Handler ---
+// --- Pillar 4: Graduated Escalation Handler (10 warnings threshold) ---
 async function handleInfraction(member, channel, reason) {
     if (!member) return;
     const uid = member.id;
@@ -86,22 +95,22 @@ async function handleInfraction(member, channel, reason) {
     const currentCount = (infractions.get(uid) || 0) + 1;
     infractions.set(uid, currentCount);
 
-    if (currentCount === 1) {
-        await channel.send(`⚠️ ${member}, Warning 1/3: ${reason}`);
-    } else if (currentCount === 2) {
+    if (currentCount >= 10) {
         try {
-            await member.timeout(10 * 60 * 1000, reason);
-            await channel.send(`🔇 **${member.user.username}** has been muted for 10 minutes following Warning 2/3.`);
+            await member.ban({ reason: `Automated System: Reached max infractions limit (10/10). Last Reason: ${reason}` });
+            await channel.send(`🔨 **${member.user.username}** has been permanently banned for reaching 10 server infractions.`);
         } catch (err) {
-            await channel.send(`⚠️ ${member}, Warning 2/3: ${reason}`);
+            await channel.send(`❌ Failed to execute automated system ban on ${member.user.username}. Check role hierarchy positions.`);
         }
-    } else if (currentCount >= 3) {
+    } else if (currentCount === 5 || currentCount === 8) {
         try {
-            await member.ban({ reason: `Automated System: Exceeded max infractions. Reason: ${reason}` });
-            await channel.send(`🔨 **${member.user.username}** has been permanently banned for reaching max infractions.`);
+            await member.timeout(30 * 60 * 1000, reason); 
+            await channel.send(`🔇 **${member.user.username}** has been muted for 30 minutes following Warning ${currentCount}/10.`);
         } catch (err) {
-            await channel.send(`❌ Failed to execute system ban on ${member.user.username}. Check bot permissions hierarchy.`);
+            await channel.send(`⚠️ ${member}, Warning ${currentCount}/10: ${reason}`);
         }
+    } else {
+        await channel.send(`⚠️ ${member}, Warning ${currentCount}/10: ${reason}`);
     }
 }
 
@@ -115,7 +124,6 @@ client.on('ready', async () => {
         // Public & Utility
         new SlashCommandBuilder().setName('help').setDescription('Displays a guide listing all available commands.'),
         new SlashCommandBuilder().setName('afk').setDescription('Set your status to AFK.').addStringOption(opt => opt.setName('reason').setDescription('Why are you going away?')),
-        new SlashCommandBuilder().setName('search').setDescription('Query Gemini AI to search patterns or answer questions.').addStringOption(opt => opt.setName('query').setDescription('The prompt to send to Gemini').setRequired(true)),
         new SlashCommandBuilder().setName('avatar').setDescription('Fetches a users profile image.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)),
         new SlashCommandBuilder().setName('userinfo').setDescription('Displays technical metadata regarding a user account.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)),
         new SlashCommandBuilder().setName('serverinfo').setDescription('Shows an analytical data snapshot of the current server.'),
@@ -123,7 +131,7 @@ client.on('ready', async () => {
         // Owner Presence Status Update Command
         new SlashCommandBuilder().setName('status').setDescription('[OWNER ONLY] Dynamically update the bot\'s custom playing status.').addStringOption(opt => opt.setName('text').setDescription('The new status text for the bot').setRequired(true)),
 
-        // Moderation Core - Guarded with explicit native Discord Application Permissions
+        // Moderation Core
         new SlashCommandBuilder().setName('history').setDescription('Displays a specified users session infractions.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
         new SlashCommandBuilder().setName('warn').setDescription('Officially warns a user for a rule violation.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for warning').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
         new SlashCommandBuilder().setName('mute').setDescription('Temporarily places a member on timeout.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addIntegerOption(opt => opt.setName('minutes').setDescription('Duration of timeout in minutes').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for mute')).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
@@ -165,7 +173,7 @@ client.on('interactionCreate', async (interaction) => {
             .setColor(0x3498DB)
             .setDescription('System access permissions are enforced via native API verification wrappers.')
             .addFields(
-                { name: '🌐 General Utilities', value: '`/help`, `/afk`, `/search`, `/avatar`, `/userinfo`, `/serverinfo`', inline: false },
+                { name: '🌐 General Utilities', value: '`/help`, `/afk`, `/avatar`, `/userinfo`, `/serverinfo`', inline: false },
                 { name: '🛡️ Moderation Desk', value: '`/history`, `/warn`, `/mute`, `/unmute`, `/warnclear`, `/kick`, `/ban`, `/unban`', inline: false },
                 { name: '🧹 Management & Filters', value: '`/purge`, `/lock`, `/unlock`, `/slowmode`, `/filteradd`, `/filterlist`', inline: false },
                 { name: '⚙️ Owner Only', value: '`/status`', inline: false }
@@ -177,20 +185,7 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'afk') {
         const reason = options.getString('reason') || 'Away from keyboard';
         afkUsers.set(interaction.user.id, { reason });
-        return interaction.reply(`💤 ${interaction.user} is now AFK: **${reason}**`);
-    }
-
-    // --- /search ---
-    if (commandName === 'search') {
-        if (!ai) return interaction.reply({ content: '❌ Gemini API Key configuration missing.', ephemeral: true });
-        await interaction.deferReply();
-        try {
-            const query = options.getString('query');
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: query });
-            return interaction.editReply(`🤖 **Gemini AI Search Result:**\n\n${(response.text || "Empty trace.").substring(0, 1900)}`);
-        } catch (err) {
-            return interaction.editReply(`⚠️ Process Execution Fault: ${err.message}`);
-        }
+        return interaction.reply(`💤 ${interaction.user} is now AFK: **{reason}**`);
     }
 
     // --- /status [OWNER ONLY] ---
@@ -201,7 +196,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const statusText = options.getString('text');
         try {
-            client.user.setActivity(statusText, { type: 0 }); // Type 0 sets activity type to "Playing"
+            client.user.setActivity(statusText, { type: 0 });
             return interaction.reply({ content: `✅ Bot profile status successfully updated to: **Playing ${statusText}**` });
         } catch (err) {
             return interaction.reply({ content: `⚠️ Failed to update profile presence activity: ${err.message}`, ephemeral: true });
@@ -241,7 +236,7 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'history') {
         const target = options.getUser('target');
         const count = infractions.get(target.id) || 0;
-        return interaction.reply({ content: `📊 User history profile for **${target.username}**: \`${count}\` current session infraction logs.` });
+        return interaction.reply({ content: `📊 User history profile for **${target.username}**: \`${count}/10\` current session infraction logs.` });
     }
 
     // --- /warn ---
