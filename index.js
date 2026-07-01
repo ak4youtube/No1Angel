@@ -418,7 +418,7 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ embeds: [embed] });
     }
 
-    // --- /autologs (Channel Generation Setup matching layout requirements) ---
+    // --- /autologs ---
     if (commandName === 'autologs') {
         await interaction.deferReply();
         try {
@@ -538,7 +538,7 @@ client.on('interactionCreate', async (interaction) => {
         await guild.members.ban(targetUser.id, { reason });
         const embed = new EmbedBuilder().setDescription(`🔨 **${targetUser.username}** has been permanently banned from the server.`).setColor(0xED4245);
         await interaction.reply({ embeds: [embed] });
-        return logModAction('🔨 Incident Logged: Ban Executed', 0xED4245, `**Target:** ${targetUser.tag} (\`${targetUser.id}\`)\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}`);
+        return logModAction('🔨 Incident Logged: Ban Executed', 0xED4245, `**Target:** ${targetUser.tag} (\ Barbarian \`${targetUser.id}\`)\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}`);
     }
 
     // --- /unban ---
