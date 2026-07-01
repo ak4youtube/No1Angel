@@ -61,11 +61,14 @@ client.on('messageCreate', async (message) => {
     if (afkUsers.has(authorId)) {
         afkUsers.delete(authorId);
         
-        const containerMessage = `>>> 🟢 **WELCOME BACK!**\n` +
-            `👋 Welcome back ${message.author}! Your **AFK Status** has been automatically revoked.\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        const containerText = `🟢 **WELCOME BACK!**\n👋 Welcome back ${message.author}! Your **AFK Status** has been automatically revoked.`;
             
-        const reply = await message.channel.send({ content: containerMessage });
+        const reply = await message.channel.send({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: containerText }]
+            }]
+        });
         setTimeout(() => reply.delete().catch(() => {}), 8000);
 
         if (notifyQueue.has(authorId)) {
@@ -73,9 +76,13 @@ client.on('messageCreate', async (message) => {
             usersToNotify.forEach(async (id) => {
                 try {
                     const user = await client.users.fetch(id);
-                    const alertContainer = `>>> 🔔 **USER RETURN ALERT**\n` +
-                        `👤 **${message.author.username}** has returned and is active in server: **${message.guild.name}**.`;
-                    await user.send({ content: alertContainer });
+                    const alertText = `🔔 **USER RETURN ALERT**\n👤 **${message.author.username}** has returned and is active in server: **${message.guild.name}**.`;
+                    await user.send({
+                        components: [{
+                            type: 17,
+                            components: [{ type: 10, content: alertText }]
+                        }]
+                    });
                 } catch {}
             });
             notifyQueue.delete(authorId);
@@ -116,7 +123,6 @@ client.on('messageCreate', async (message) => {
 // ----------------------------------------------------------------
 // Multi-Stream Highly Informative Audit Logger Events
 // ----------------------------------------------------------------
-
 client.on('messageDelete', async (message) => {
     if (message.partial || !message.guild || message.author?.bot) return;
     const embed = new EmbedBuilder()
@@ -213,7 +219,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 `👥 **Target Room Headcount:** \`${newState.channel?.members.size}\` Users`
             );
     } else {
-        return; // Filter out system mutes
+        return; 
     }
     await dispatchLog(guild, 'no1angel-voice-logs', embed);
 });
@@ -250,7 +256,7 @@ client.on('channelDelete', async (channel) => {
 
 client.on('roleCreate', async (role) => {
     const embed = new EmbedBuilder()
-        .setTitle('🟢 Advanced Audit Log: Cryptographic Permissions Matrix Role Spawned')
+        .setTitle('🟢 Advanced Audit Log: Permissions Role Spawned')
         .setColor(0x57F287)
         .setDescription(
             `🔹 **Role Registry Label:** \`${role.name}\` (${role})\n` +
@@ -264,7 +270,7 @@ client.on('roleCreate', async (role) => {
 
 client.on('roleDelete', async (role) => {
     const embed = new EmbedBuilder()
-        .setTitle('🔴 Advanced Audit Log: Cryptographic Role System Terminated')
+        .setTitle('🔴 Advanced Audit Log: Role System Terminated')
         .setColor(0xED4245)
         .setDescription(
             `🔹 **Destroyed Registry Label:** \`${role.name}\`\n` +
@@ -322,11 +328,24 @@ client.on('interactionCreate', async (interaction) => {
 
         if (action === 'notify') {
             if (interaction.user.id === targetId) {
-                return interaction.reply({ content: '>>> ❌ **SYSTEM SECURITY FAULT:**\nYou cannot sign up for return alerts directed to yourself.', ephemeral: true });
+                return interaction.reply({
+                    flags: 32768,
+                    components: [{
+                        type: 17,
+                        components: [{ type: 10, content: `❌ **SYSTEM SECURITY FAULT:**\nYou cannot sign up for return alerts directed to yourself.` }]
+                    }]
+                });
             }
             if (!notifyQueue.has(targetId)) notifyQueue.set(targetId, new Set());
             notifyQueue.get(targetId).add(interaction.user.id);
-            return interaction.reply({ content: '>>> 🔔 **CONNECTION LOCK REGISTERED!**\nI will send you a DM as soon as this user wakes up their messaging interface.', ephemeral: true });
+
+            return interaction.reply({
+                flags: 32768,
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `🔔 **CONNECTION LOCK REGISTERED!**\nI will send you a DM as soon as this user wakes up their messaging interface.` }]
+                }]
+            });
         }
 
         if (action === 'message') {
@@ -350,7 +369,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isModalSubmit()) {
         const [prefix, action, targetId] = interaction.customId.split('_');
         if (prefix === 'afk' && action === 'modal') {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: 32768 });
             const msgContent = interaction.fields.getTextInputValue('afk_text_input');
             
             try {
@@ -362,9 +381,20 @@ client.on('interactionCreate', async (interaction) => {
                     .setTimestamp();
                 
                 await targetUser.send({ embeds: [dmEmbed] });
-                return interaction.editReply({ content: '>>> ✅ **DISPATCH COMPLETED:**\nMessage delivered directly to their private inbox securely.' });
+
+                return interaction.editReply({
+                    components: [{
+                        type: 17,
+                        components: [{ type: 10, content: `✅ **DISPATCH COMPLETED:**\nMessage delivered directly to their private inbox securely.` }]
+                    }]
+                });
             } catch {
-                return interaction.editReply({ content: '>>> ❌ **DISPATCH ERROR:**\nUnable to send direct message. The recipient might have locked DMs.' });
+                return interaction.editReply({
+                    components: [{
+                        type: 17,
+                        components: [{ type: 10, content: `❌ **DISPATCH ERROR:**\nUnable to send direct message. The recipient might have locked DMs.` }]
+                    }]
+                });
             }
         }
     }
@@ -374,11 +404,11 @@ client.on('interactionCreate', async (interaction) => {
 
     // --- /help ---
     if (commandName === 'help') {
-        const out = `>>> ⚔️ **NO1ANGEL ARCHITECTURE PROTOCOLS & USER DIRECTORY**\n` +
+        const out = `⚔️ **NO1ANGEL ARCHITECTURE PROTOCOLS & USER DIRECTORY**\n` +
             `Welcome to the core operations handbook. Commands must be initialized with a slash (\`/\`).\n\n` +
             `🌐 **GENERAL COMMANDS SYSTEM** (Public Utilities)\n` +
             `🔹 \`/help\` — Displays this structural operations system layout.\n` +
-            `🔹 \`/afk [reason]\` — Temporarily toggles your away profile state (Clears automatically upon your next message entry).\n` +
+            `🔹 \`/afk [reason]\` — Temporarily toggles your away profile state.\n` +
             `🔹 \`/avatar <target>\` — Fetches a high-resolution canvas link to any chosen account icon.\n` +
             `🔹 \`/userinfo <target>\` — Queries metadata registries for account registration dates.\n` +
             `🔹 \`/serverinfo\` — Generates diagnostic analytics regarding active headcount populations.\n\n` +
@@ -386,9 +416,9 @@ client.on('interactionCreate', async (interaction) => {
             `🔸 \`/history <target>\` — Pulls data logs detailing current local session warnings.\n` +
             `🔸 \`/warn <target> <reason>\` — Registers a permanent warning strike flag to an identity databank.\n` +
             `🔸 \`/mute <target> <minutes> [reason]\` — Triggers a cryptographic network timeout restriction.\n` +
-            `🔸 \`/unmute <target>\` — Clears active restriction states prior to schedule expiration clocks.\n` +
+            `🔸 \`/unmute <target>\` — Clears active restriction states early.\n` +
             `🔸 \`/warnclear <target>\` — Flushes local infraction arrays back to clean base parity.\n` +
-            `🔸 \`/kick <target> [reason]\` — Forces an identity connection disconnect packet off the server guild.\n` +
+            `🔸 \`/kick <target> [reason]\` — Forces an identity connection disconnect packet off the server.\n` +
             `🔸 \`/ban <target> [reason]\` — Purges access profiles and permanently blocks account handshakes.\n` +
             `🔸 \`/unban <userid>\` — Strips a specific user identifier string off the global ban registry.\n\n` +
             `🧹 **INFRASTRUCTURE MANAGEMENT LAYERS** (Staff Utilities)\n` +
@@ -399,30 +429,50 @@ client.on('interactionCreate', async (interaction) => {
             `🔹 \`/autologs\` — Automatically builds, assigns categories to, and deploys the entire logging suite.\n\n` +
             `📖 **OPERATIONS SYNTAX GUIDE**\n` +
             `• Angle parameters \`< parameter >\` imply **Strictly Mandatory Data Inputs**.\n` +
-            `• Square parameters \`[ parameter ]\` mean the parameter can be **Safely Left Blank**.\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-        return interaction.reply({ content: out });
+            `• Square parameters \`[ parameter ]\` mean the parameter can be **Safely Left Blank**.`;
+
+        return interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
     }
 
     // --- /afk ---
     if (commandName === 'afk') {
         const reason = options.getString('reason') || 'Away from keyboard';
         afkUsers.set(interaction.user.id, { reason, timestamp: Date.now() });
-        const out = `>>> 💤 **AFK ANNOUNCEMENT CONTAINER**\n` +
-            `👤 **Member:** ${interaction.user}\n` +
-            `📝 **Reason Matrix:** *"${reason}"*\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-        return interaction.reply({ content: out });
+        
+        const out = `💤 **AFK ANNOUNCEMENT CONTAINER**\n👤 **Member:** ${interaction.user}\n📝 **Reason Matrix:** *"${reason}"*`;
+        return interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
     }
 
     // --- /status ---
     if (commandName === 'status') {
         if (interaction.user.id !== OWNER_ID) {
-            return interaction.reply({ content: '>>> ⛔ **ACCESS VIOLATION:**\nReserved configuration command blocked for non-owners.', ephemeral: true });
+            return interaction.reply({
+                flags: 32768,
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `⛔ **ACCESS VIOLATION:**\nReserved configuration command blocked for non-owners.` }]
+                }]
+            });
         }
         const text = options.getString('text');
         client.user.setActivity(text, { type: 0 });
-        return interaction.reply({ content: `>>> ✅ **PRESENCE ENGINE UPDATE:**\nSystem status activity text set to **Playing ${text}**.` });
+
+        return interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: `✅ **PRESENCE ENGINE UPDATE:**\nSystem status activity text set to **Playing ${text}**.` }]
+            }]
+        });
     }
 
     // --- /avatar ---
@@ -439,26 +489,35 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'userinfo') {
         const target = options.getUser('target');
         const member = await guild.members.fetch(target.id).catch(() => null);
-        const out = `>>> 👤 **IDENTITY RECONNAISSANCE MATRIX REPORT**\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        
+        const out = `👤 **IDENTITY RECONNAISSANCE MATRIX REPORT**\n` +
             `🔹 **Target Account:** ${target} (\`${target.tag}\`)\n` +
             `🔹 **User Registration Unique ID:** \`${target.id}\`\n` +
             `📆 **Discord Profiling Inception:** <t:${Math.floor(target.createdTimestamp / 1000)}:F> (<t:${Math.floor(target.createdTimestamp / 1000)}:R>)\n` +
-            `📥 **Guild Server Deployment Date:** ${member ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '`Not present in guild data`'}\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-        return interaction.reply({ content: out });
+            `📥 **Guild Server Deployment Date:** ${member ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '`Not present in guild data`'}`;
+
+        return interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
     }
 
     // --- /serverinfo ---
     if (commandName === 'serverinfo') {
-        const out = `>>> 📊 **GUILD SERVER INFRASTRUCTURE PROFILE ANALYTICS**\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        const out = `📊 **GUILD SERVER INFRASTRUCTURE PROFILE ANALYTICS**\n` +
             `🔹 **Guild Server Identity:** \`${guild.name}\`\n` +
             `🔹 **Internal Databank Target ID:** \`${guild.id}\`\n` +
             `👥 **Total Synced Population Headcount:** \`${guild.memberCount}\` Registered Accounts\n` +
-            `📆 **System Deployment Genesis Date:** <t:${Math.floor(guild.createdTimestamp / 1000)}:F>\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-        return interaction.reply({ content: out });
+            `📆 **System Deployment Genesis Date:** <t:${Math.floor(guild.createdTimestamp / 1000)}:F>`;
+
+        return interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
     }
 
     // --- /autologs ---
@@ -489,11 +548,20 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            const out = `>>> ⚙️ **SUITE AUTOMATION ARCHITECTURE SETUP COMPLETE**\n` +
-                `The complete **No1Angel Logs** structural core and nested data feeds have been deployment-verified.`;
-            return interaction.editReply({ content: out });
+            const out = `⚙️ **SUITE AUTOMATION ARCHITECTURE SETUP COMPLETE**\nThe complete **No1Angel Logs** structural core and nested data feeds have been deployment-verified.`;
+            return interaction.editReply({
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: out }]
+                }]
+            });
         } catch (err) {
-            return interaction.editReply({ content: `>>> ⚠️ **AUTOMATION SETUP ABORT EXCEPTION:**\n${err.message}` });
+            return interaction.editReply({
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `⚠️ **AUTOMATION SETUP ABORT EXCEPTION:**\n${err.message}` }]
+                }]
+            });
         }
     }
 
@@ -501,10 +569,14 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'history') {
         const target = options.getUser('target');
         const count = infractions.get(target.id) || 0;
-        const out = `>>> 📊 **INFRACTION MANAGEMENT REGISTRY SUMMARY**\n` +
-            `👤 **Target Account:** ${target}\n` +
-            `🔢 **Active Session Violation Count:** \`${count}\` Incident Flags.`;
-        return interaction.reply({ content: out });
+        
+        const out = `📊 **INFRACTION MANAGEMENT REGISTRY SUMMARY**\n👤 **Target Account:** ${target}\n🔢 **Active Session Violation Count:** \`${count}\` Incident Flags.`;
+        return interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
     }
 
     async function logModAction(title, color, description) {
@@ -523,11 +595,13 @@ client.on('interactionCreate', async (interaction) => {
         const count = (infractions.get(target.id) || 0) + 1;
         infractions.set(target.id, count);
 
-        const out = `>>> ⚠️ **SECURITY MATRIX WARNING LOG ACTION**\n` +
-            `👤 **Sanctioned User:** ${target}\n` +
-            `📝 **Reason Logged:** \`${reason}\`\n` +
-            `🔢 **Active Session Tracker Threshold:** \`${count}\` Flags Issued.`;
-        await interaction.reply({ content: out });
+        const out = `⚠️ **SECURITY MATRIX WARNING LOG ACTION**\n👤 **Sanctioned User:** ${target}\n📝 **Reason Logged:** \`${reason}\`\n🔢 **Active Session Tracker Threshold:** \`${count}\` Flags Issued.`;
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🔨 Incident Logged: Warning Issued', 0xFEE75C, `>>> **Target:** ${target}\n**Moderator:** ${interaction.user}\n**Reason Given:** ${reason}\n**Total Tracker:** \`${count}\``);
     }
 
@@ -538,14 +612,24 @@ client.on('interactionCreate', async (interaction) => {
         const reason = options.getString('reason') || 'No explicit tracking reason specified.';
         const member = await guild.members.fetch(targetUser.id).catch(() => null);
 
-        if (!member) return interaction.reply({ content: '>>> ❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.', ephemeral: true });
+        if (!member) {
+            return interaction.reply({
+                flags: 32768,
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.` }]
+                }]
+            });
+        }
         await member.timeout(minutes * 60 * 1000, reason);
 
-        const out = `>>> 🔇 **TIMEOUT RESTRICTION CONTAINER CONFIGURED**\n` +
-            `👤 **Target Restricted User:** \`${targetUser.username}\` (${targetUser})\n` +
-            `⏳ **Duration Window Assigned:** \`${minutes}\` Minutes\n` +
-            `📝 **Reason Node:** \`${reason}\``;
-        await interaction.reply({ content: out });
+        const out = `🔇 **TIMEOUT RESTRICTION CONTAINER CONFIGURED**\n👤 **Target Restricted User:** \`${targetUser.username}\` (${targetUser})\n⏳ **Duration Window Assigned:** \`${minutes}\` Minutes\n📝 **Reason Node:** \`${reason}\``;
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🔇 Incident Logged: Timeout Applied', 0xED4245, `>>> **Target Member:** ${targetUser}\n**Action Taken By:** ${interaction.user}\n**Duration Assigned:** ${minutes} min\n**Reason:** ${reason}`);
     }
 
@@ -554,12 +638,24 @@ client.on('interactionCreate', async (interaction) => {
         const targetUser = options.getUser('target');
         const member = await guild.members.fetch(targetUser.id).catch(() => null);
 
-        if (!member) return interaction.reply({ content: '>>> ❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.', ephemeral: true });
+        if (!member) {
+            return interaction.reply({
+                flags: 32768,
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.` }]
+                }]
+            });
+        }
         await member.timeout(null);
 
-        const out = `>>> 🔊 **RESTRICTION OVERRIDE: TIMEOUT STRIPPED EARLY**\n` +
-            `👤 **Target Restored User:** \`${targetUser.username}\` has been re-allocated text communication capabilities.`;
-        await interaction.reply({ content: out });
+        const out = `🔊 **RESTRICTION OVERRIDE: TIMEOUT STRIPPED EARLY**\n👤 **Target Restored User:** \`${targetUser.username}\` has been re-allocated text communication capabilities.`;
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🔊 Incident Logged: Timeout Lifted', 0x57F287, `>>> **Target Member:** ${targetUser}\n**Action Taken By:** ${interaction.user}`);
     }
 
@@ -567,9 +663,14 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'warnclear') {
         const target = options.getUser('target');
         infractions.set(target.id, 0);
-        const out = `>>> 🔄 **INCIDENT TRACKER FILE PURGED RE-INDEX**\n` +
-            `👤 **Target Account:** \`${target.username}\` has had all active temporary session points set back to zero.`;
-        await interaction.reply({ content: out });
+        
+        const out = `🔄 **INCIDENT TRACKER FILE PURGED RE-INDEX**\n👤 **Target Account:** \`${target.username}\` has had all active temporary session points set back to zero.`;
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🔄 History Cleared', 0x3498DB, `>>> **Target Member:** ${target}\n**Action Taken By:** ${interaction.user}`);
     }
 
@@ -579,13 +680,24 @@ client.on('interactionCreate', async (interaction) => {
         const reason = options.getString('reason') || 'No explicit context parsed.';
         const member = await guild.members.fetch(targetUser.id).catch(() => null);
 
-        if (!member) return interaction.reply({ content: '>>> ❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.', ephemeral: true });
+        if (!member) {
+            return interaction.reply({
+                flags: 32768,
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.` }]
+                }]
+            });
+        }
         await member.kick(reason);
 
-        const out = `>>> 👢 **SERVER ENVIRONMENT FORCEFUL DISCONNECT DISPATCHED**\n` +
-            `👤 **Expelled User Profile:** \`${targetUser.username}\` (${targetUser})\n` +
-            `📝 **Reason Context Node:** \`${reason}\``;
-        await interaction.reply({ content: out });
+        const out = `👢 **SERVER ENVIRONMENT FORCEFUL DISCONNECT DISPATCHED**\n👤 **Expelled User Profile:** \`${targetUser.username}\` (${targetUser})\n📝 **Reason Context Node:** \`${reason}\``;
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('👢 Incident Logged: Kick Executed', 0xE67E22, `>>> **Target Member:** ${targetUser.tag}\n**Action Taken By:** ${interaction.user}\n**Reason:** ${reason}`);
     }
 
@@ -595,10 +707,13 @@ client.on('interactionCreate', async (interaction) => {
         const reason = options.getString('reason') || 'No explicit context parsed.';
 
         await guild.members.ban(targetUser.id, { reason });
-        const out = `>>> 🔨 **PERMANENT GUILD INTERFACES EXCLUSION BAN BANISHED**\n` +
-            `👤 **Banned Core Identity:** \`${targetUser.username}\` (${targetUser})\n` +
-            `📝 **Reason Context Node:** \`${reason}\``;
-        await interaction.reply({ content: out });
+        const out = `🔨 **PERMANENT GUILD INTERFACES EXCLUSION BAN BANISHED**\n👤 **Banned Core Identity:** \`${targetUser.username}\` (${targetUser})\n📝 **Reason Context Node:** \`${reason}\``;
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🔨 Incident Logged: Ban Executed', 0xED4245, `>>> **Target User:** ${targetUser.tag} (\`${targetUser.id}\`)\n**Action Taken By:** ${interaction.user}\n**Reason:** ${reason}`);
     }
 
@@ -607,42 +722,76 @@ client.on('interactionCreate', async (interaction) => {
         const userId = options.getString('userid');
         try {
             await guild.members.unban(userId);
-            const out = `>>> 🔓 **RESTRICTION OVERRIDE: ID MANUALLY REVOKED FROM BANLIST**\n` +
-                `👤 **Identity ID Hash:** \`${userId}\` configuration cleared back into user entry pool.`;
-            await interaction.reply({ content: out });
+            const out = `🔓 **RESTRICTION OVERRIDE: ID MANUALLY REVOKED FROM BANLIST**\n👤 **Identity ID Hash:** \`${userId}\` configuration cleared back into user entry pool.`;
+            await interaction.reply({
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: out }]
+                }]
+            });
             return logModAction('🔓 Incident Logged: Unban Executed', 0x57F287, `>>> **Target ID Signature:** \`${userId}\`\n**Action Taken By:** ${interaction.user}`);
         } catch {
-            return interaction.reply({ content: '>>> ❌ **UNBAN PIPELINE FAULT:** ID input string mismatch, or matching hash was not present on data ban arrays.', ephemeral: true });
+            return interaction.reply({
+                flags: 32768,
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `❌ **UNBAN PIPELINE FAULT:** ID input string mismatch, or matching hash was not present on data ban arrays.` }]
+                }]
+            });
         }
     }
 
     // --- /purge ---
     if (commandName === 'purge') {
         const amount = options.getInteger('amount');
-        if (amount < 1 || amount > 100) return interaction.reply({ content: '>>> ❌ **BOUND EVALUATION FAULT:** Stream count boundaries must sit between 1 and 100 indices.', ephemeral: true });
+        if (amount < 1 || amount > 100) {
+            return interaction.reply({
+                flags: 32768,
+                components: [{
+                    type: 17,
+                    components: [{ type: 10, content: `❌ **BOUND EVALUATION FAULT:** Stream count boundaries must sit between 1 and 100 indices.` }]
+                }]
+            });
+        }
 
         const deleted = await channel.bulkDelete(amount, true).catch(() => []);
-        const out = `>>> 🧹 **BULK CHAT SEGMENT DEPLETION CLEANED**\n` +
-            `Dropped \`${deleted.size}\` historical message traces completely from current memory pipelines.`;
-        await interaction.reply({ content: out, ephemeral: true });
+        const out = `🧹 **BULK CHAT SEGMENT DEPLETION CLEANED**\nDropped \`${deleted.size}\` historical message traces completely from current memory pipelines.`;
+        
+        await interaction.reply({
+            flags: 32768,
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🧹 Messages Purged', 0x3498DB, `>>> **Channel Target:** ${channel}\n**Action Taken By:** ${interaction.user}\n**Cleaned Lines:** \`${deleted.size}\``);
     }
 
     // --- /lock ---
     if (commandName === 'lock') {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
-        const out = `>>> 🔒 **EMERGENCY CONTAINER: CHANNEL FLOW DISPATCH CRIPPLED**\n` +
-            `Public messaging pathways have been sealed on this specific endpoint coordinate.`;
-        await interaction.reply({ content: out });
+        const out = `🔒 **EMERGENCY CONTAINER: CHANNEL FLOW DISPATCH CRIPPLED**\nPublic messaging pathways have been sealed on this specific endpoint coordinate.`;
+        
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🔒 Channel Locked', 0xED4245, `>>> **Channel Locked:** ${channel}\n**Action Taken By:** ${interaction.user}`);
     }
 
     // --- /unlock ---
     if (commandName === 'unlock') {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
-        const out = `>>> 🔓 **EMERGENCY RESOLVED: CHANNEL ACCESS RETURNED TO PARITY**\n` +
-            `Public default typing protocols have been safely synchronized and re-activated.`;
-        await interaction.reply({ content: out });
+        const out = `🔓 **EMERGENCY RESOLVED: CHANNEL ACCESS RETURNED TO PARITY**\nPublic default typing protocols have been safely synchronized and re-activated.`;
+        
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('🔓 Channel Unlocked', 0x57F287, `>>> **Channel Opened:** ${channel}\n**Action Taken By:** ${interaction.user}`);
     }
 
@@ -650,9 +799,14 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'slowmode') {
         const seconds = options.getInteger('seconds');
         await channel.setRateLimitPerUser(seconds);
-        const out = `>>> ⏳ **COOLDOWN SYSTEM INTERVAL RESTATED**\n` +
-            `Users must pause exactly \`${seconds}\` seconds between transmission packets in this room coordinate.`;
-        await interaction.reply({ content: out });
+        const out = `⏳ **COOLDOWN SYSTEM INTERVAL RESTATED**\nUsers must pause exactly \`${seconds}\` seconds between transmission packets in this room coordinate.`;
+        
+        await interaction.reply({
+            components: [{
+                type: 17,
+                components: [{ type: 10, content: out }]
+            }]
+        });
         return logModAction('⏳ Slowmode Cooldown Updated', 0xFEE75C, `>>> **Channel:** ${channel}\n**Action Taken By:** ${interaction.user}\n**Delay Threshold:** \`${seconds}\` seconds`);
     }
 });
