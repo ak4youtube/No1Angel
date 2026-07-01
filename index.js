@@ -9,7 +9,8 @@ const {
     ModalBuilder, 
     TextInputBuilder, 
     ActionRowBuilder,
-    Routes
+    Routes,
+    ActivityType
 } = require('discord.js');
 const fs = require('fs');
 
@@ -72,7 +73,19 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('afk')
             .setDescription('Sets your state to out-of-office.')
-            .addStringOption(opt => opt.setName('status').setDescription('Custom status log.').setRequired(false))
+            .addStringOption(opt => opt.setName('status').setDescription('Custom status log.').setRequired(false)),
+
+        new SlashCommandBuilder()
+            .setName('status')
+            .setDescription('Updates the bot active presence text. (OWNER ONLY)')
+            .addStringOption(opt => opt.setName('text').setDescription('The custom text status content.').setRequired(true))
+            .addStringOption(opt => opt.setName('visibility').setDescription('The visibility state.').setRequired(true)
+                .addChoices(
+                    { name: 'Online', value: 'online' },
+                    { name: 'Idle', value: 'idle' },
+                    { name: 'Do Not Disturb', value: 'dnd' },
+                    { name: 'Invisible', value: 'invisible' }
+                ))
     ];
 
     await client.application.commands.set(commands);
@@ -84,6 +97,45 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const config = getConfig();
+
+    // 🌟 STRICT CHECKPOINT: OWNER ONLY STATUS ENFORCEMENT
+    if (interaction.commandName === 'status') {
+        const ownerOverrideId = process.env.OWNER_ID; 
+
+        if (interaction.user.id !== ownerOverrideId) {
+            return await interaction.reply({
+                flags: 64,
+                components: [{
+                    type: 17, accent_color: 15548997,
+                    components: [
+                        { type: 10, content: '### 🛑 Security Override Triggered' },
+                        { type: 14, divider: true, spacing: 1 },
+                        { type: 10, content: 'Access terminated. The `/status` matrix command is strictly locked to the root `OWNER_ID` profile.' }
+                    ]
+                }]
+            });
+        }
+
+        const text = interaction.options.getString('text');
+        const visibility = interaction.options.getString('visibility');
+
+        client.user.setPresence({
+            status: visibility,
+            activities: [{ name: text, type: ActivityType.Custom }]
+        });
+
+        return await interaction.reply({
+            flags: 64,
+            components: [{
+                type: 17, accent_color: 5793266,
+                components: [
+                    { type: 10, content: '### 👁️ Global Presence Synchronized' },
+                    { type: 14, divider: true, spacing: 1 },
+                    { type: 10, content: `Bot identity profiles altered:\n* **Status Text:** \`${text}\`\n* **Visibility State:** \`${visibility.toUpperCase()}\`` }
+                ]
+            }]
+        });
+    }
 
     if (interaction.commandName === 'autologs') {
         await interaction.deferReply({ ephemeral: true });
