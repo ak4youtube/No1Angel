@@ -5,11 +5,11 @@ const {
     SlashCommandBuilder, 
     PermissionFlagsBits, 
     ChannelType, 
-    ComponentType, 
     TextInputStyle, 
     ModalBuilder, 
     TextInputBuilder, 
-    ActionRowBuilder 
+    ActionRowBuilder,
+    Routes
 } = require('discord.js');
 const fs = require('fs');
 
@@ -25,94 +25,75 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.GuildMember]
 });
 
-// Helper functions to manage local configuration database state
 const getConfig = () => JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 const saveConfig = (config) => fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
 
-// Global UI Helper: Renders all system messages in pristine Component V2 layout structures
-const sendComponentV2Reply = async (interaction, title, content, isEphemeral = true, color = 5793266) => {
-    const payload = {
-        flags: isEphemeral ? 64 : undefined,
-        components: [
-            {
-                type: 17, // Modern Container Layout component
-                accent_color: color,
+// Safe REST Sender to inject Component V2 structures without throwing node exceptions
+const transmitComponentV2 = async (channelId, title, content, color = 5793266) => {
+    try {
+        await client.rest.post(Routes.channelMessages(channelId), {
+            body: {
+                flags: 32768, // Crucial: Informs the gateway to handle Components V2 parameters
                 components: [
-                    { type: 10, content: `### ${title}` },
-                    { type: 14, divider: true, spacing: 1 },
-                    { type: 10, content: content }
+                    {
+                        type: 17, // Container
+                        accent_color: color,
+                        components: [
+                            { type: 10, content: `### ${title}` },
+                            { type: 14, divider: true, spacing: 1 },
+                            { type: 10, content: content }
+                        ]
+                    }
                 ]
             }
-        ]
-    };
-    if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(payload);
-    } else {
-        await interaction.reply(payload);
+        });
+    } catch (err) {
+        console.error(`💥 Gateway rejection on log transport: ${err.message}`);
     }
 };
 
-// Log Dispatcher: Formats server telemetry directly into beautiful target containers
+// Log Dispatcher targeting the No1Angel Logs infrastructure
 const dispatchLog = async (guild, logType, title, content, color) => {
     const config = getConfig();
     const channelId = config.channels?.[logType];
     if (!channelId) return;
-
-    const channel = guild.channels.cache.get(channelId);
-    if (!channel) return;
-
-    await channel.send({
-        components: [
-            {
-                type: 17,
-                accent_color: color,
-                components: [
-                    { type: 10, content: `### ${title}` },
-                    { type: 14, divider: true, spacing: 1 },
-                    { type: 10, content: content }
-                ]
-            }
-        ]
-    });
+    await transmitComponentV2(channelId, title, content, color);
 };
 
 client.once('ready', async () => {
-    console.log(`📡 System Core Active // Logged in as ${client.user.tag}`);
+    console.log(`📡 System Engine Ready // No1Angel Matrix Online`);
     
-    // Register Application Deployment Commands with native role permission filters
     const commands = [
         new SlashCommandBuilder()
             .setName('autologs')
-            .setDescription('Automatically deploys and routes the No1Angel Logs infrastructure matrix.')
+            .setDescription('Deploys the No1Angel Logs category matrix.')
             .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
         
         new SlashCommandBuilder()
             .setName('afk')
-            .setDescription('Sets your terminal state to away.')
-            .addStringOption(opt => opt.setName('status').setDescription('Custom status message to leave behind.').setRequired(false))
+            .setDescription('Sets your state to out-of-office.')
+            .addStringOption(opt => opt.setName('status').setDescription('Custom status log.').setRequired(false))
     ];
 
     await client.application.commands.set(commands);
 });
 
 /* ==========================================================
-   💾 COMMAND HANDLING DISPATCHERS
+   💾 EXECUTION MATRIX
    ========================================================== */
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-
     const config = getConfig();
 
     if (interaction.commandName === 'autologs') {
         await interaction.deferReply({ ephemeral: true });
         
         try {
-            // Instantiate Category Container
             const category = await interaction.guild.channels.create({
                 name: 'No1Angel Logs',
                 type: ChannelType.GuildCategory,
                 permissionOverwrites: [
-                    { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] } // Keep hidden globally
+                    { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] }
                 ]
             });
 
@@ -139,9 +120,30 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             saveConfig(config);
-            await sendComponentV2Reply(interaction, '✅ Core Blueprint Implemented', 'The `No1Angel Logs` category cluster and all seven monitoring streams have been safely built and routed.', true, 5793266);
+
+            await interaction.editReply({
+                flags: 64,
+                components: [{
+                    type: 17, accent_color: 5793266,
+                    components: [
+                        { type: 10, content: '### ✅ Structural Matrix Realized' },
+                        { type: 14, divider: true, spacing: 1 },
+                        { type: 10, content: 'The `No1Angel Logs` category has been instantiated with all monitoring streams.' }
+                    ]
+                }]
+            });
         } catch (err) {
-            await sendComponentV2Reply(interaction, '❌ Initialization Failure', `An error occurred compiling the channel configurations:\n\`\`\`${err.message}\`\`\``, true, 15548997);
+            await interaction.editReply({
+                flags: 64,
+                components: [{
+                    type: 17, accent_color: 15548997,
+                    components: [
+                        { type: 10, content: '### ❌ Task Interruption' },
+                        { type: 14, divider: true, spacing: 1 },
+                        { type: 10, content: `Error processing structure:\n\`\`\`${err.message}\`\`\`` }
+                    ]
+                }]
+            });
         }
     }
 
@@ -157,35 +159,46 @@ client.on('interactionCreate', async (interaction) => {
         };
         
         saveConfig(config);
-        await sendComponentV2Reply(interaction, '💤 AFK Matrix Engaged', `Your profile is marked away. Status: *"${status}"*`, false, 3447003);
+
+        await interaction.reply({
+            components: [{
+                type: 17, accent_color: 3447003,
+                components: [
+                    { type: 10, content: '### 💤 Status Registered' },
+                    { type: 14, divider: true, spacing: 1 },
+                    { type: 10, content: `<@${interaction.user.id}> is now away: *"${status}"*` }
+                ]
+            }]
+        });
     }
 });
 
 /* ==========================================================
-   🛏️ INTERACTIVE BUTTONS & MODALS (AFK LOGIC CORE)
+   🛏️ INTERACTIVE BUTTONS & MODALS
    ========================================================== */
 client.on('interactionCreate', async (interaction) => {
     const config = getConfig();
 
     if (interaction.isButton()) {
-        const [action, targetUserId] = interaction.customId.split('_');
-        if (action !== 'afk') return;
+        const parts = interaction.customId.split('_');
+        const action = parts[0];
+        const subAction = parts[1];
+        const targetUserId = parts[2];
 
-        // Prevent users from queueing automated alerts or messages onto themselves
+        if (action !== 'afk') return;
         if (interaction.user.id === targetUserId) {
-            return await interaction.reply({ content: 'You cannot execute interactions against your own profile status loop.', ephemeral: true });
+            return await interaction.reply({ content: 'Interaction loop block: Cannot target yourself.', ephemeral: true });
         }
 
-        if (interaction.customId.startsWith('afk_leave_msg')) {
+        if (subAction === 'leave') {
             const modal = new ModalBuilder()
                 .setCustomId(`afk_modal_${targetUserId}`)
-                .setTitle('Leave a Message');
+                .setTitle('Transmit Memo');
 
             const textInput = new TextInputBuilder()
                 .setCustomId('message_content')
-                .setLabel('Your Message')
+                .setLabel('Message Details')
                 .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder('Type the details you want to send directly to their inbox...')
                 .setRequired(true)
                 .setMaxLength(1000);
 
@@ -193,19 +206,17 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         }
 
-        if (interaction.customId.startsWith('afk_notify_return')) {
+        if (subAction === 'notify') {
             if (!config.afk[targetUserId]) {
-                return await interaction.reply({ content: 'This user is no longer away.', ephemeral: true });
+                return await interaction.reply({ content: 'Target account has returned.', ephemeral: true });
             }
-
             if (config.afk[targetUserId].notifications.includes(interaction.user.id)) {
-                return await interaction.reply({ content: 'You are already registered to receive a notification upon their return.', ephemeral: true });
+                return await interaction.reply({ content: 'Alert configuration already exists.', ephemeral: true });
             }
 
             config.afk[targetUserId].notifications.push(interaction.user.id);
             saveConfig(config);
-
-            await interaction.reply({ content: '🔔 Connection monitored. You will receive a direct message when they clear their AFK matrix.', ephemeral: true });
+            await interaction.reply({ content: '🔔 Trace linked. You will receive an inbox note on their return.', ephemeral: true });
         }
     }
 
@@ -215,86 +226,76 @@ client.on('interactionCreate', async (interaction) => {
             const messageContent = interaction.fields.getTextInputValue('message_content');
 
             if (!config.afk[targetUserId]) {
-                return await interaction.reply({ content: 'This user returned while you were filling out the form.', ephemeral: true });
+                return await interaction.reply({ content: 'Target has already returned.', ephemeral: true });
             }
 
-            // Route data securely into local storage array
             config.afk[targetUserId].messages.push({ sender: interaction.user.id, content: messageContent });
             saveConfig(config);
 
-            // Flash the direct payload out to the away user's mailbox instantly
             const targetUser = await client.users.fetch(targetUserId).catch(() => null);
             if (targetUser) {
                 await targetUser.send({
-                    components: [
-                        {
-                            type: 17,
-                            accent_color: 3447003,
-                            components: [
-                                { type: 10, content: `### 📩 Incoming Memo Received` },
-                                { type: 14, divider: true, spacing: 1 },
-                                { type: 10, content: `**Sender:** <@${interaction.user.id}>\n\n**Message Content:**\n> ${messageContent}` }
-                            ]
-                        }
-                    ]
+                    components: [{
+                        type: 17, accent_color: 3447003,
+                        components: [
+                            { type: 10, content: `### 📩 Memo Intercept` },
+                            { type: 14, divider: true, spacing: 1 },
+                            { type: 10, content: `**From:** <@${interaction.user.id}>\n\n**Content:**\n> ${messageContent}` }
+                        ]
+                    }]
                 }).catch(() => null);
             }
 
-            await interaction.reply({ content: '✅ Message transmitted and cached securely for their return review.', ephemeral: true });
+            await interaction.reply({ content: '✅ Memo securely piped into their direct inbox.', ephemeral: true });
         }
     }
 });
 
 /* ==========================================================
-   🚨 CHAT MATRIX INTERCEPTOR (PING DEFLECTION & RETURN TRACING)
+   🚨 CHAT MONITORING LOOP
    ========================================================== */
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
     const config = getConfig();
 
-    // 1. CLEAR AFK STATUS ON CHAT DETECT
+    // 1. CLEARS AFK
     if (config.afk?.[message.author.id]) {
         const data = config.afk[message.author.id];
         delete config.afk[message.author.id];
         saveConfig(config);
 
-        // Frame the return notification message beautifully
-        await message.channel.send({
-            components: [
-                {
-                    type: 17,
-                    accent_color: 5793266,
+        await client.rest.post(Routes.channelMessages(message.channel.id), {
+            body: {
+                flags: 32768,
+                components: [{
+                    type: 17, accent_color: 5793266,
                     components: [
-                        { type: 10, content: `### 👋 Welcome Back // Terminal Restored` },
+                        { type: 10, content: `### 👋 Matrix Synchronized // Restored` },
                         { type: 14, divider: true, spacing: 1 },
-                        { type: 10, content: `<@${message.author.id}> has returned to the keyboard and cleared their away parameters.` }
+                        { type: 10, content: `<@${message.author.id}> has re-established activity updates.` }
                     ]
-                }
-            ]
+                }]
+            }
         });
 
-        // Loop through the registration arrays and beam out private notifications
         for (const notifierId of data.notifications) {
             const user = await client.users.fetch(notifierId).catch(() => null);
             if (user) {
                 await user.send({
-                    components: [
-                        {
-                            type: 17,
-                            accent_color: 5793266,
-                            components: [
-                                { type: 10, content: `### 🔔 Return Notification Link` },
-                                { type: 14, divider: true, spacing: 1 },
-                                { type: 10, content: `<@${message.author.id}> is now active on the network.` }
-                            ]
-                        }
-                    ]
+                    components: [{
+                        type: 17, accent_color: 5793266,
+                        components: [
+                            { type: 10, content: `### 🔔 Network Alert` },
+                            { type: 14, divider: true, spacing: 1 },
+                            { type: 10, content: `<@${message.author.id}> has returned to their terminal.` }
+                        ]
+                    }]
                 }).catch(() => null);
             }
         }
     }
 
-    // 2. DEFLECT PINGS TARGETING OUT-OF-OFFICE USERS
+    // 2. DEFLECT PINGS
     if (message.mentions.users.size > 0) {
         for (const [id, user] of message.mentions.users) {
             if (config.afk?.[id]) {
@@ -302,19 +303,18 @@ client.on('messageCreate', async (message) => {
                 await message.reply({
                     components: [
                         {
-                            type: 17,
-                            accent_color: 3447003,
+                            type: 17, accent_color: 3447003,
                             components: [
-                                { type: 10, content: `### 💤 User Currently Away` },
+                                { type: 10, content: `### 💤 Terminal Status: Away` },
                                 { type: 14, divider: true, spacing: 1 },
-                                { type: 10, content: `<@${id}> went AFK <t:${data.timestamp}:R>.\n\n**Status left:**\n> *"${data.status}"*` }
+                                { type: 10, content: `<@${id}> went out-of-office <t:${data.timestamp}:R>.\n\n**Status message:**\n> *"${data.status}"*` }
                             ]
                         },
                         {
                             type: 1,
                             components: [
-                                { type: 2, style: 2, label: 'Leave a Message', custom_id: `afk_leave_msg_${id}`, emoji: { name: '📩' } },
-                                { type: 2, style: 2, label: 'Notify When Back', custom_id: `afk_notify_return_${id}`, emoji: { name: '🔔' } }
+                                { type: 2, style: 2, label: 'Leave a Message', custom_id: `afk_leave_${id}`, emoji: { name: '📩' } },
+                                { type: 2, style: 2, label: 'Notify When Back', custom_id: `afk_notify_${id}`, emoji: { name: '🔔' } }
                             ]
                         }
                     ]
@@ -325,15 +325,13 @@ client.on('messageCreate', async (message) => {
 });
 
 /* ==========================================================
-   📡 SERVER MONITORING LOOPS (NO1ANGEL TELEMETRY PORTS)
+   📡 TELEMETRY PORTS (NO1ANGEL MONITORING PIPELINES)
    ========================================================== */
-
-// --- MESSAGE LOGS ---
 client.on('messageDelete', async (message) => {
     if (message.author?.bot || !message.guild) return;
     await dispatchLog(
         message.guild, 'message', '🗑️ Message Erased from History',
-        `**Author:** <@${message.author.id}> (\`${message.author.id}\`)\n**Channel:** <#${message.channel.id}>\n\n**Content Payload:**\n\`\`\`${message.content || '[No Text Content / Dynamic Layout Data Found]'}\`\`\``,
+        `**Author:** <@${message.author.id}> (\`${message.author.id}\`)\n**Channel:** <#${message.channel.id}>\n\n**Content:**\n\`\`\`${message.content || '[No plain text data]'}\`\`\``,
         15548997
     );
 });
@@ -347,11 +345,10 @@ client.on('messageUpdate', async (oldMsg, newMsg) => {
     );
 });
 
-// --- MEMBER LOGS ---
 client.on('guildMemberAdd', async (member) => {
     await dispatchLog(
         member.guild, 'member', '📥 Account Entry Registered',
-        `**User:** <@${member.user.id}> (\`${member.user.id}\`)\n**Tag:** \`${member.user.tag}\`\n**Account Created:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:F>`,
+        `**User:** <@${member.user.id}> (\`${member.user.id}\`)\n**Tag:** \`${member.user.tag}\``,
         5793266
     );
 });
@@ -359,79 +356,66 @@ client.on('guildMemberAdd', async (member) => {
 client.on('guildMemberRemove', async (member) => {
     await dispatchLog(
         member.guild, 'member', '📤 Account Departure Logged',
-        `**User:** <@${member.user.id}> (\`${member.user.id}\`)\n**Tag:** \`${member.user.tag}\``,
+        `**User:** <@${member.user.id}> (\`${member.user.id}\`)`,
         15548997
     );
 });
 
-// --- SERVER LOGS ---
 client.on('inviteCreate', async (invite) => {
     await dispatchLog(
         invite.guild, 'server', '🎟️ Access Link Generated',
-        `**Creator:** <@${invite.inviter?.id}>\n**Code:** \`${invite.code}\`\n**Channel Routing:** <#${invite.channel?.id}>\n**Lifespan:** Max Uses: \`${invite.maxUses}\` / Expires: <t:${Math.floor(invite.expiresTimestamp / 1000)}:R>`,
+        `**Creator:** <@${invite.inviter?.id}>\n**Code:** \`${invite.code}\`\n**Route:** <#${invite.channel?.id}>`,
         1752220
     );
 });
 
-// --- VOICE LOGS ---
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guild = oldState.guild;
     const user = newState.member?.user;
     if (!user || user.bot) return;
 
     if (!oldState.channelId && newState.channelId) {
-        await dispatchLog(guild, 'voice', '🔊 Voice Grid Connection established', `**User:** <@${user.id}>\n**Joined Channel:** <#${newState.channelId}>`, 5793266);
+        await dispatchLog(guild, 'voice', '🔊 Voice Grid Entry', `**User:** <@${user.id}>\n**Target:** <#${newState.channelId}>`, 5793266);
     } else if (oldState.channelId && !newState.channelId) {
-        await dispatchLog(guild, 'voice', '🔇 Voice Grid Connection Severed', `**User:** <@${user.id}>\n**Left Channel:** <#${oldState.channelId}>`, 15548997);
+        await dispatchLog(guild, 'voice', '🔇 Voice Grid Disconnect', `**User:** <@${user.id}>\n**Source:** <#${oldState.channelId}>`, 15548997);
     } else if (oldState.channelId !== newState.channelId) {
-        await dispatchLog(guild, 'voice', '🎚️ Voice Cluster Channel Swapped', `**User:** <@${user.id}>\n**From:** <#${oldState.channelId}>\n**To:** <#${newState.channelId}>`, 3447003);
+        await dispatchLog(guild, 'voice', '🎚️ Voice Grid Channel Shift', `**User:** <@${user.id}>\n**From:** <#${oldState.channelId}>\n**To:** <#${newState.channelId}>`, 3447003);
     }
 });
 
-// --- CHANNEL LOGS ---
 client.on('channelCreate', async (channel) => {
     if (!channel.guild) return;
-    await dispatchLog(channel.guild, 'channel', '🧱 Node Matrix Layer Spawned', `**Channel Created:** <#${channel.id}> (\`${channel.id}\`)\n**Type:** \`${channel.type}\``, 5793266);
+    await dispatchLog(channel.guild, 'channel', '🧱 Node Layer Added', `**Channel:** <#${channel.id}>\n**Type:** \`${channel.type}\``, 5793266);
 });
 
 client.on('channelDelete', async (channel) => {
     if (!channel.guild) return;
-    await dispatchLog(channel.guild, 'channel', '💥 Node Matrix Layer Purged', `**Name:** \`${channel.name}\`\n**ID Context:** \`${channel.id}\`\n**Type:** \`${channel.type}\``, 15548997);
+    await dispatchLog(channel.guild, 'channel', '💥 Node Layer Destroyed', `**Name:** \`${channel.name}\`\n**Type:** \`${channel.type}\``, 15548997);
 });
 
-// --- ROLE LOGS ---
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const guild = oldMember.guild;
     const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
     const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
 
-    if (addedRoles.size > 0) {
-        for (const [id, role] of addedRoles) {
-            await dispatchLog(guild, 'role', '🛡️ Verification Signature Appended', `**Target User:** <@${newMember.id}>\n**Role Assigned:** <@&${role.id}> (\`${role.id}\`)`, 1752220);
-        }
+    for (const [id, role] of addedRoles) {
+        await dispatchLog(guild, 'role', '🛡️ Role Attached', `**Target:** <@${newMember.id}>\n**Role:** <@&${role.id}>`, 1752220);
     }
-    if (removedRoles.size > 0) {
-        for (const [id, role] of removedRoles) {
-            await dispatchLog(guild, 'role', '🪓 Verification Signature Revoked', `**Target User:** <@${newMember.id}>\n**Role Removed:** <@&${role.id}> (\`${role.id}\`)`, 15548997);
-        }
+    for (const [id, role] of removedRoles) {
+        await dispatchLog(guild, 'role', '🪓 Role Revoked', `**Target:** <@${newMember.id}>\n**Role:** <@&${role.id}>`, 15548997);
     }
 });
 
-// --- MODERATION LOGS ---
 client.on('guildBanAdd', async (ban) => {
     await dispatchLog(
-        ban.guild, 'mod', '⛔ Network Ban Protocol Enforced',
-        `**Banned Target Account:** <@${ban.user.id}> (\`${ban.user.id}\`)\n**Tag Identity:** \`${ban.user.tag}\`\n\n**Reason Stated:**\n> *${ban.reason || 'No explicit tracking reason specified.'}*`,
+        ban.guild, 'mod', '⛔ Ban Order Realized',
+        `**User:** <@${ban.user.id}>\n**Identity:** \`${ban.user.tag}\`\n**Reason:** *${ban.reason || 'Not documented.'}*`,
         15548997
     );
 });
 
 client.on('guildBanRemove', async (ban) => {
-    await dispatchLog(
-        ban.guild, 'mod', '🔓 Network Ban Protocol Rescinded',
-        `**Target Account:** <@${ban.user.id}> (\`${ban.user.id}\`)\n**Tag Identity:** \`${ban.user.tag}\``,
-        5793266
-    );
+    await dispatchLog(ban.guild, 'mod', '🔓 Ban Order Revoked', `**User:** <@${ban.user.id}>`, 5793266);
 });
 
 client.login(process.env.DISCORD_TOKEN);
