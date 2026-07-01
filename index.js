@@ -1,355 +1,437 @@
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { GoogleGenAI } from '@google/genai';
-
-// ----------------------------------------------------------------
-// Initialization & Configurations Securely Extracted
-// ----------------------------------------------------------------
-const TOKEN = process.env.DISCORD_TOKEN;
-const OWNER_ID = process.env.OWNER_ID;
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
-
-// Parse bypass roles into an array of strings (removes white spaces)
-const BYPASS_ROLE_IDS = process.env.BYPASS_ROLE_IDS 
-    ? process.env.BYPASS_ROLE_IDS.split(',').map(id => id.trim()) 
-    : [];
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Partials, 
+    SlashCommandBuilder, 
+    PermissionFlagsBits, 
+    ChannelType, 
+    ComponentType, 
+    TextInputStyle, 
+    ModalBuilder, 
+    TextInputBuilder, 
+    ActionRowBuilder 
+} = require('discord.js');
+const fs = require('fs');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildModeration
+    ],
+    partials: [Partials.Message, Partials.Channel, Partials.GuildMember]
 });
 
-// Setup official Google Gen AI Client for background auto-mod features
-const ai = GEMINI_KEY ? new GoogleGenAI({ apiKey: GEMINI_KEY }) : null;
+// Helper functions to manage local configuration database state
+const getConfig = () => JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+const saveConfig = (config) => fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
 
-// In-memory runtime tracking caches
-const afkUsers = new Map();     // Structure: userID -> { reason: string }
-const infractions = new Map();  // Structure: userID -> infractionCount (int)
-const dynamicBannedWords = new Set(["scamlink.com", "freediscordnitro", "hacktool"]);
-
-// ----------------------------------------------------------------
-// Pillars 2, 3 & AFK Monitoring (Active Chat Interception)
-// ----------------------------------------------------------------
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.guild) return;
-
-    const authorId = message.author.id;
-
-    // --- AFK Logic ---
-    if (afkUsers.has(authorId)) {
-        afkUsers.delete(authorId);
-        const reply = await message.channel.send(`👋 Welcome back ${message.author}, I have removed your AFK status.`);
-        setTimeout(() => reply.delete().catch(() => {}), 8000);
-    }
-
-    if (message.mentions.users.size > 0) {
-        message.mentions.users.forEach(async (user) => {
-            if (afkUsers.has(user.id)) {
-                const details = afkUsers.get(user.id);
-                const afkReply = await message.channel.send(`📌 **${user.username}** is currently AFK: *${details.reason}*`);
-                setTimeout(() => afkReply.delete().catch(() => {}), 10000);
+// Global UI Helper: Renders all system messages in pristine Component V2 layout structures
+const sendComponentV2Reply = async (interaction, title, content, isEphemeral = true, color = 5793266) => {
+    const payload = {
+        flags: isEphemeral ? 64 : undefined,
+        components: [
+            {
+                type: 17, // Modern Container Layout component
+                accent_color: color,
+                components: [
+                    { type: 10, content: `### ${title}` },
+                    { type: 14, divider: true, spacing: 1 },
+                    { type: 10, content: content }
+                ]
             }
-        });
-    }
-
-    // --- Bypass Check for Auto-Mods ---
-    const hasBypassRole = message.member?.roles.cache.some(role => BYPASS_ROLE_IDS.includes(role.id));
-    if (hasBypassRole) return;
-
-    // --- Pillar 2: Word Filters ---
-    const contentLower = message.content.toLowerCase();
-    const containsBadWord = Array.from(dynamicBannedWords).some(word => contentLower.includes(word));
-    
-    if (containsBadWord) {
-        await message.delete().catch(() => {});
-        await handleInfraction(message.member, message.channel, "Sending blacklisted terms / scam phrases.");
-        return;
-    }
-
-    // --- Pillar 3: AI Sentiment Context Evaluation ---
-    if (message.content.length > 15 && ai) {
-        try {
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: `Analyze if the following text contains extreme toxicity, severe slurs, harassment, or grooming behavior. Reply with only one word: 'SAFE' or 'TOXIC'.\nText: ${message.content}`
-            });
-
-            if (response.text && response.text.toUpperCase().includes('TOXIC')) {
-                await message.delete().catch(() => {});
-                await handleInfraction(message.member, message.channel, "AI Flagged Content (Contextual Toxicity/Harassment).");
-            }
-        } catch (error) {
-            // Failsafe catch for API timeouts
-        }
-    }
-});
-
-// --- Pillar 4: Graduated Escalation Handler (10 warnings threshold) ---
-async function handleInfraction(member, channel, reason) {
-    if (!member) return;
-    const uid = member.id;
-    
-    const currentCount = (infractions.get(uid) || 0) + 1;
-    infractions.set(uid, currentCount);
-
-    if (currentCount >= 10) {
-        try {
-            await member.ban({ reason: `Automated System: Reached max infractions limit (10/10). Last Reason: ${reason}` });
-            await channel.send(`🔨 **${member.user.username}** has been permanently banned for reaching 10 server infractions.`);
-        } catch (err) {
-            await channel.send(`❌ Failed to execute automated system ban on ${member.user.username}. Check role hierarchy positions.`);
-        }
-    } else if (currentCount === 5 || currentCount === 8) {
-        try {
-            await member.timeout(30 * 60 * 1000, reason); 
-            await channel.send(`🔇 **${member.user.username}** has been muted for 30 minutes following Warning ${currentCount}/10.`);
-        } catch (err) {
-            await channel.send(`⚠️ ${member}, Warning ${currentCount}/10: ${reason}`);
-        }
+        ]
+    };
+    if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(payload);
     } else {
-        await channel.send(`⚠️ ${member}, Warning ${currentCount}/10: ${reason}`);
+        await interaction.reply(payload);
     }
-}
+};
 
-// ----------------------------------------------------------------
-// Registration & Dynamic Slash Command Builder Arrays
-// ----------------------------------------------------------------
-client.on('ready', async () => {
-    console.log(`Node Engine active. Logged in as ${client.user.tag}`);
+// Log Dispatcher: Formats server telemetry directly into beautiful target containers
+const dispatchLog = async (guild, logType, title, content, color) => {
+    const config = getConfig();
+    const channelId = config.channels?.[logType];
+    if (!channelId) return;
 
+    const channel = guild.channels.cache.get(channelId);
+    if (!channel) return;
+
+    await channel.send({
+        components: [
+            {
+                type: 17,
+                accent_color: color,
+                components: [
+                    { type: 10, content: `### ${title}` },
+                    { type: 14, divider: true, spacing: 1 },
+                    { type: 10, content: content }
+                ]
+            }
+        ]
+    });
+};
+
+client.once('ready', async () => {
+    console.log(`📡 System Core Active // Logged in as ${client.user.tag}`);
+    
+    // Register Application Deployment Commands with native role permission filters
     const commands = [
-        // Public & Utility
-        new SlashCommandBuilder().setName('help').setDescription('Displays a guide listing all available commands.'),
-        new SlashCommandBuilder().setName('afk').setDescription('Set your status to AFK.').addStringOption(opt => opt.setName('reason').setDescription('Why are you going away?')),
-        new SlashCommandBuilder().setName('avatar').setDescription('Fetches a users profile image.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)),
-        new SlashCommandBuilder().setName('userinfo').setDescription('Displays technical metadata regarding a user account.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)),
-        new SlashCommandBuilder().setName('serverinfo').setDescription('Shows an analytical data snapshot of the current server.'),
+        new SlashCommandBuilder()
+            .setName('autologs')
+            .setDescription('Automatically deploys and routes the No1Angel Logs infrastructure matrix.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
         
-        // Owner Presence Status Update Command
-        new SlashCommandBuilder().setName('status').setDescription('[OWNER ONLY] Dynamically update the bot\'s custom playing status.').addStringOption(opt => opt.setName('text').setDescription('The new status text for the bot').setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('afk')
+            .setDescription('Sets your terminal state to away.')
+            .addStringOption(opt => opt.setName('status').setDescription('Custom status message to leave behind.').setRequired(false))
+    ];
 
-        // Moderation Core
-        new SlashCommandBuilder().setName('history').setDescription('Displays a specified users session infractions.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-        new SlashCommandBuilder().setName('warn').setDescription('Officially warns a user for a rule violation.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for warning').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-        new SlashCommandBuilder().setName('mute').setDescription('Temporarily places a member on timeout.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addIntegerOption(opt => opt.setName('minutes').setDescription('Duration of timeout in minutes').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for mute')).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-        new SlashCommandBuilder().setName('unmute').setDescription('Removes an active timeout from a member early.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-        new SlashCommandBuilder().setName('warnclear').setDescription('Resets a users session infractions back to zero.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-        new SlashCommandBuilder().setName('kick').setDescription('Disconnects a member from the guild server.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for kick')).setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
-        new SlashCommandBuilder().setName('ban').setDescription('Permanently bans a user from the server guild.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for ban')).setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
-        new SlashCommandBuilder().setName('unban').setDescription('Removes a user from the server ban list.').addStringOption(opt => opt.setName('userid').setDescription('Raw Discord String User ID').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
-        
-        // Chat Management & Lockdown Tools
-        new SlashCommandBuilder().setName('purge').setDescription('Bulk-deletes a specified number of recent chat messages.').addIntegerOption(opt => opt.setName('amount').setDescription('Number of messages to clear (1-100)').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-        new SlashCommandBuilder().setName('lock').setDescription('Locks down the current channel, blocking members from typing.').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-        new SlashCommandBuilder().setName('unlock').setDescription('Restores messaging permissions back to a locked channel.').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-        new SlashCommandBuilder().setName('slowmode').setDescription('Sets a custom message cooldown delay on the current channel.').addIntegerOption(opt => opt.setName('seconds').setDescription('Cooldown in seconds (0 to turn off)').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-        new SlashCommandBuilder().setName('filteradd').setDescription('Dynamically adds a temporary custom string token to Pillar 2 filters.').addStringOption(opt => opt.setName('word').setDescription('Keyword phrase to target').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-        new SlashCommandBuilder().setName('filterlist').setDescription('Prints out all current blacklisted keywords active in Pillar 2.').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    ].map(cmd => cmd.toJSON());
-
-    const rest = new REST({ version: '10' }).setToken(TOKEN);
-    try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    } catch (err) {
-        console.error("Error deployment layout:", err);
-    }
+    await client.application.commands.set(commands);
 });
 
-// ----------------------------------------------------------------
-// Interaction Engine Router Execution
-// ----------------------------------------------------------------
+/* ==========================================================
+   💾 COMMAND HANDLING DISPATCHERS
+   ========================================================== */
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName, options, channel, guild } = interaction;
+    const config = getConfig();
 
-    // --- /help ---
-    if (commandName === 'help') {
-        const helpEmbed = new EmbedBuilder()
-            .setTitle('📚 Mod Bot Command Matrix Directory')
-            .setColor(0x3498DB)
-            .setDescription('System access permissions are enforced via native API verification wrappers.')
-            .addFields(
-                { name: '🌐 General Utilities', value: '`/help`, `/afk`, `/avatar`, `/userinfo`, `/serverinfo`', inline: false },
-                { name: '🛡️ Moderation Desk', value: '`/history`, `/warn`, `/mute`, `/unmute`, `/warnclear`, `/kick`, `/ban`, `/unban`', inline: false },
-                { name: '🧹 Management & Filters', value: '`/purge`, `/lock`, `/unlock`, `/slowmode`, `/filteradd`, `/filterlist`', inline: false },
-                { name: '⚙️ Owner Only', value: '`/status`', inline: false }
-            );
-        return interaction.reply({ embeds: [helpEmbed] });
-    }
-
-    // --- /afk ---
-    if (commandName === 'afk') {
-        const reason = options.getString('reason') || 'Away from keyboard';
-        afkUsers.set(interaction.user.id, { reason });
-        return interaction.reply(`💤 ${interaction.user} is now AFK: **{reason}**`);
-    }
-
-    // --- /status [OWNER ONLY] ---
-    if (commandName === 'status') {
-        if (interaction.user.id !== OWNER_ID) {
-            return interaction.reply({ content: '⛔ Security Fault: This command is strictly reserved for the bot owner.', ephemeral: true });
-        }
-
-        const statusText = options.getString('text');
+    if (interaction.commandName === 'autologs') {
+        await interaction.deferReply({ ephemeral: true });
+        
         try {
-            client.user.setActivity(statusText, { type: 0 });
-            return interaction.reply({ content: `✅ Bot profile status successfully updated to: **Playing ${statusText}**` });
+            // Instantiate Category Container
+            const category = await interaction.guild.channels.create({
+                name: 'No1Angel Logs',
+                type: ChannelType.GuildCategory,
+                permissionOverwrites: [
+                    { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] } // Keep hidden globally
+                ]
+            });
+
+            const channelsToCreate = [
+                { key: 'message', name: 'no1angel-message-logs' },
+                { key: 'member', name: 'no1angel-member-logs' },
+                { key: 'server', name: 'no1angel-server-logs' },
+                { key: 'voice', name: 'no1angel-voice-logs' },
+                { key: 'channel', name: 'no1angel-channel-logs' },
+                { key: 'role', name: 'no1angel-role-logs' },
+                { key: 'mod', name: 'no1angel-mod-logs' }
+            ];
+
+            config.channels = config.channels || {};
+            config.logsCategory = category.id;
+
+            for (const target of channelsToCreate) {
+                const createdChan = await interaction.guild.channels.create({
+                    name: target.name,
+                    type: ChannelType.GuildText,
+                    parent: category.id
+                });
+                config.channels[target.key] = createdChan.id;
+            }
+
+            saveConfig(config);
+            await sendComponentV2Reply(interaction, '✅ Core Blueprint Implemented', 'The `No1Angel Logs` category cluster and all seven monitoring streams have been safely built and routed.', true, 5793266);
         } catch (err) {
-            return interaction.reply({ content: `⚠️ Failed to update profile presence activity: ${err.message}`, ephemeral: true });
+            await sendComponentV2Reply(interaction, '❌ Initialization Failure', `An error occurred compiling the channel configurations:\n\`\`\`${err.message}\`\`\``, true, 15548997);
         }
     }
 
-    // --- /avatar ---
-    if (commandName === 'avatar') {
-        const target = options.getUser('target');
-        return interaction.reply({ content: `🖼️ **${target.username}'s Avatar:**\n${target.displayAvatarURL({ dynamic: true, size: 1024 })}` });
-    }
-
-    // --- /userinfo ---
-    if (commandName === 'userinfo') {
-        const targetUser = options.getUser('target');
-        const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
-        const embed = new EmbedBuilder().setTitle(`👤 Trace Details: ${targetUser.username}`).setColor(0x9B59B6)
-            .addFields(
-                { name: 'User ID', value: `\`${targetUser.id}\``, inline: true },
-                { name: 'Created Profile', value: `<t:${Math.floor(targetUser.createdTimestamp / 1000)}:R>`, inline: true },
-                { name: 'Server Joined', value: targetMember ? `<t:${Math.floor(targetMember.joinedTimestamp / 1000)}:R>` : 'Not in server', inline: true }
-            );
-        return interaction.reply({ embeds: [embed] });
-    }
-
-    // --- /serverinfo ---
-    if (commandName === 'serverinfo') {
-        const embed = new EmbedBuilder().setTitle(`📊 Cluster Server Profile: ${guild.name}`).setColor(0xE67E22)
-            .addFields(
-                { name: 'Total Accounts', value: `\`${guild.memberCount}\``, inline: true },
-                { name: 'Created Date', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`, inline: false }
-            );
-        return interaction.reply({ embeds: [embed] });
-    }
-
-    // --- /history ---
-    if (commandName === 'history') {
-        const target = options.getUser('target');
-        const count = infractions.get(target.id) || 0;
-        return interaction.reply({ content: `📊 User history profile for **${target.username}**: \`${count}/10\` current session infraction logs.` });
-    }
-
-    // --- /warn ---
-    if (commandName === 'warn') {
-        const target = options.getUser('target');
-        const targetMember = await guild.members.fetch(target.id).catch(() => null);
-        const reason = options.getString('reason');
-        await interaction.reply({ content: `✅ Logged tracking warning entry against alignment index for ${target.username}.` });
-        return handleInfraction(targetMember, channel, reason);
-    }
-
-    // --- /mute ---
-    if (commandName === 'mute') {
-        const targetMember = await guild.members.fetch(options.getUser('target').id).catch(() => null);
-        const minutes = options.getInteger('minutes');
-        const reason = options.getString('reason') || 'No explicit reason parsed.';
-        if (!targetMember) return interaction.reply({ content: '❌ Target profile missing.', ephemeral: true });
+    if (interaction.commandName === 'afk') {
+        const status = interaction.options.getString('status') || 'Away from terminal.';
+        config.afk = config.afk || {};
         
-        await targetMember.timeout(minutes * 60 * 1000, reason);
-        return interaction.reply({ content: `🔇 **${targetMember.user.username}** has been restricted for ${minutes} minutes. Reason: ${reason}` });
-    }
-
-    // --- /unmute ---
-    if (commandName === 'unmute') {
-        const targetMember = await guild.members.fetch(options.getUser('target').id).catch(() => null);
-        if (!targetMember) return interaction.reply({ content: '❌ Profile signature evaluation invalid.', ephemeral: true });
+        config.afk[interaction.user.id] = {
+            status: status,
+            timestamp: Math.floor(Date.now() / 1000),
+            notifications: [],
+            messages: []
+        };
         
-        await targetMember.timeout(null);
-        return interaction.reply({ content: `🔊 Lifted text and voice timeouts early from **${targetMember.user.username}**.` });
-    }
-
-    // --- /warnclear ---
-    if (commandName === 'warnclear') {
-        const target = options.getUser('target');
-        infractions.set(target.id, 0);
-        return interaction.reply({ content: `🔄 Purged and reset all volatile runtime session records to zero for **${target.username}**.` });
-    }
-
-    // --- /kick ---
-    if (commandName === 'kick') {
-        const targetMember = await guild.members.fetch(options.getUser('target').id).catch(() => null);
-        const reason = options.getString('reason') || 'No explicit tracking reason specified.';
-        if (!targetMember) return interaction.reply({ content: '❌ Member profile trace unavailable.', ephemeral: true });
-        
-        await targetMember.kick(reason);
-        return interaction.reply({ content: `👢 **${targetMember.user.username}** was disconnected from the server environment.` });
-    }
-
-    // --- /ban ---
-    if (commandName === 'ban') {
-        const targetUser = options.getUser('target');
-        const reason = options.getString('reason') || 'No explicit context parsed.';
-        
-        await guild.members.ban(targetUser.id, { reason });
-        return interaction.reply({ content: `🔨 **${targetUser.username}** has been completely blacklisted and banned.` });
-    }
-
-    // --- /unban ---
-    if (commandName === 'unban') {
-        const userId = options.getString('userid');
-        try {
-            await guild.members.unban(userId);
-            return interaction.reply({ content: `🔓 Revoked ban profile database configuration matching identity tracker sequence ID: \`${userId}\`.` });
-        } catch {
-            return interaction.reply({ content: '❌ Error: Identity signature mismatch or ID was never banned.', ephemeral: true });
-        }
-    }
-
-    // --- /purge ---
-    if (commandName === 'purge') {
-        const amount = options.getInteger('amount');
-        if (amount < 1 || amount > 100) return interaction.reply({ content: '❌ Provide bounds between 1 and 100 entries.', ephemeral: true });
-        
-        const deleted = await channel.bulkDelete(amount, true).catch(() => []);
-        return interaction.reply({ content: `🧹 Successfully scrubbed and dropped \`${deleted.size}\` chat message lines cleanly.`, ephemeral: true });
-    }
-
-    // --- /lock ---
-    if (commandName === 'lock') {
-        await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
-        return interaction.reply({ content: '🔒 **Channel Closed:** Everyone permission mappings evaluated to locked status.' });
-    }
-
-    // --- /unlock ---
-    if (commandName === 'unlock') {
-        await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
-        return interaction.reply({ content: '🔓 **Channel Reopened:** Default messaging streams reset.' });
-    }
-
-    // --- /slowmode ---
-    if (commandName === 'slowmode') {
-        const seconds = options.getInteger('seconds');
-        await channel.setRateLimitPerUser(seconds);
-        return interaction.reply({ content: `⏳ Channel slowmode cycle limit reassigned to **${seconds}** seconds.` });
-    }
-
-    // --- /filteradd ---
-    if (commandName === 'filteradd') {
-        const word = options.getString('word').toLowerCase();
-        dynamicBannedWords.add(word);
-        return interaction.reply({ content: `📥 Appended phrase entry \`${word}\` securely inside active auto-mod dictionaries.` });
-    }
-
-    // --- /filterlist ---
-    if (commandName === 'filterlist') {
-        const list = Array.from(dynamicBannedWords).map(w => `\`${w}\``).join(', ');
-        return interaction.reply({ content: `📋 **Active Hardcoded Blacklisted Strings Engine Filters:**\n${list || '_None_'}` });
+        saveConfig(config);
+        await sendComponentV2Reply(interaction, '💤 AFK Matrix Engaged', `Your profile is marked away. Status: *"${status}"*`, false, 3447003);
     }
 });
 
-// Run Bot Engine Core Execution
-if (!TOKEN) {
-    console.error("CRITICAL RUNTIME PREPARATION EXCEPTION: DISCORD_TOKEN is completely missing.");
-} else {
-    client.login(TOKEN);
-}
+/* ==========================================================
+   🛏️ INTERACTIVE BUTTONS & MODALS (AFK LOGIC CORE)
+   ========================================================== */
+client.on('interactionCreate', async (interaction) => {
+    const config = getConfig();
+
+    if (interaction.isButton()) {
+        const [action, targetUserId] = interaction.customId.split('_');
+        if (action !== 'afk') return;
+
+        // Prevent users from queueing automated alerts or messages onto themselves
+        if (interaction.user.id === targetUserId) {
+            return await interaction.reply({ content: 'You cannot execute interactions against your own profile status loop.', ephemeral: true });
+        }
+
+        if (interaction.customId.startsWith('afk_leave_msg')) {
+            const modal = new ModalBuilder()
+                .setCustomId(`afk_modal_${targetUserId}`)
+                .setTitle('Leave a Message');
+
+            const textInput = new TextInputBuilder()
+                .setCustomId('message_content')
+                .setLabel('Your Message')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Type the details you want to send directly to their inbox...')
+                .setRequired(true)
+                .setMaxLength(1000);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(textInput));
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.customId.startsWith('afk_notify_return')) {
+            if (!config.afk[targetUserId]) {
+                return await interaction.reply({ content: 'This user is no longer away.', ephemeral: true });
+            }
+
+            if (config.afk[targetUserId].notifications.includes(interaction.user.id)) {
+                return await interaction.reply({ content: 'You are already registered to receive a notification upon their return.', ephemeral: true });
+            }
+
+            config.afk[targetUserId].notifications.push(interaction.user.id);
+            saveConfig(config);
+
+            await interaction.reply({ content: '🔔 Connection monitored. You will receive a direct message when they clear their AFK matrix.', ephemeral: true });
+        }
+    }
+
+    if (interaction.isModalSubmit()) {
+        if (interaction.customId.startsWith('afk_modal_')) {
+            const targetUserId = interaction.customId.split('_')[2];
+            const messageContent = interaction.fields.getTextInputValue('message_content');
+
+            if (!config.afk[targetUserId]) {
+                return await interaction.reply({ content: 'This user returned while you were filling out the form.', ephemeral: true });
+            }
+
+            // Route data securely into local storage array
+            config.afk[targetUserId].messages.push({ sender: interaction.user.id, content: messageContent });
+            saveConfig(config);
+
+            // Flash the direct payload out to the away user's mailbox instantly
+            const targetUser = await client.users.fetch(targetUserId).catch(() => null);
+            if (targetUser) {
+                await targetUser.send({
+                    components: [
+                        {
+                            type: 17,
+                            accent_color: 3447003,
+                            components: [
+                                { type: 10, content: `### 📩 Incoming Memo Received` },
+                                { type: 14, divider: true, spacing: 1 },
+                                { type: 10, content: `**Sender:** <@${interaction.user.id}>\n\n**Message Content:**\n> ${messageContent}` }
+                            ]
+                        }
+                    ]
+                }).catch(() => null);
+            }
+
+            await interaction.reply({ content: '✅ Message transmitted and cached securely for their return review.', ephemeral: true });
+        }
+    }
+});
+
+/* ==========================================================
+   🚨 CHAT MATRIX INTERCEPTOR (PING DEFLECTION & RETURN TRACING)
+   ========================================================== */
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild) return;
+    const config = getConfig();
+
+    // 1. CLEAR AFK STATUS ON CHAT DETECT
+    if (config.afk?.[message.author.id]) {
+        const data = config.afk[message.author.id];
+        delete config.afk[message.author.id];
+        saveConfig(config);
+
+        // Frame the return notification message beautifully
+        await message.channel.send({
+            components: [
+                {
+                    type: 17,
+                    accent_color: 5793266,
+                    components: [
+                        { type: 10, content: `### 👋 Welcome Back // Terminal Restored` },
+                        { type: 14, divider: true, spacing: 1 },
+                        { type: 10, content: `<@${message.author.id}> has returned to the keyboard and cleared their away parameters.` }
+                    ]
+                }
+            ]
+        });
+
+        // Loop through the registration arrays and beam out private notifications
+        for (const notifierId of data.notifications) {
+            const user = await client.users.fetch(notifierId).catch(() => null);
+            if (user) {
+                await user.send({
+                    components: [
+                        {
+                            type: 17,
+                            accent_color: 5793266,
+                            components: [
+                                { type: 10, content: `### 🔔 Return Notification Link` },
+                                { type: 14, divider: true, spacing: 1 },
+                                { type: 10, content: `<@${message.author.id}> is now active on the network.` }
+                            ]
+                        }
+                    ]
+                }).catch(() => null);
+            }
+        }
+    }
+
+    // 2. DEFLECT PINGS TARGETING OUT-OF-OFFICE USERS
+    if (message.mentions.users.size > 0) {
+        for (const [id, user] of message.mentions.users) {
+            if (config.afk?.[id]) {
+                const data = config.afk[id];
+                await message.reply({
+                    components: [
+                        {
+                            type: 17,
+                            accent_color: 3447003,
+                            components: [
+                                { type: 10, content: `### 💤 User Currently Away` },
+                                { type: 14, divider: true, spacing: 1 },
+                                { type: 10, content: `<@${id}> went AFK <t:${data.timestamp}:R>.\n\n**Status left:**\n> *"${data.status}"*` }
+                            ]
+                        },
+                        {
+                            type: 1,
+                            components: [
+                                { type: 2, style: 2, label: 'Leave a Message', custom_id: `afk_leave_msg_${id}`, emoji: { name: '📩' } },
+                                { type: 2, style: 2, label: 'Notify When Back', custom_id: `afk_notify_return_${id}`, emoji: { name: '🔔' } }
+                            ]
+                        }
+                    ]
+                });
+            }
+        }
+    }
+});
+
+/* ==========================================================
+   📡 SERVER MONITORING LOOPS (NO1ANGEL TELEMETRY PORTS)
+   ========================================================== */
+
+// --- MESSAGE LOGS ---
+client.on('messageDelete', async (message) => {
+    if (message.author?.bot || !message.guild) return;
+    await dispatchLog(
+        message.guild, 'message', '🗑️ Message Erased from History',
+        `**Author:** <@${message.author.id}> (\`${message.author.id}\`)\n**Channel:** <#${message.channel.id}>\n\n**Content Payload:**\n\`\`\`${message.content || '[No Text Content / Dynamic Layout Data Found]'}\`\`\``,
+        15548997
+    );
+});
+
+client.on('messageUpdate', async (oldMsg, newMsg) => {
+    if (oldMsg.author?.bot || !oldMsg.guild || oldMsg.content === newMsg.content) return;
+    await dispatchLog(
+        oldMsg.guild, 'message', '📝 Content Payload Altered',
+        `**Author:** <@${oldMsg.author.id}>\n**Channel:** <#${oldMsg.channel.id}>\n\n**Original:**\n\`\`\`${oldMsg.content}\`\`\`\n**Revised:**\n\`\`\`${newMsg.content}\`\`\``,
+        3447003
+    );
+});
+
+// --- MEMBER LOGS ---
+client.on('guildMemberAdd', async (member) => {
+    await dispatchLog(
+        member.guild, 'member', '📥 Account Entry Registered',
+        `**User:** <@${member.user.id}> (\`${member.user.id}\`)\n**Tag:** \`${member.user.tag}\`\n**Account Created:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:F>`,
+        5793266
+    );
+});
+
+client.on('guildMemberRemove', async (member) => {
+    await dispatchLog(
+        member.guild, 'member', '📤 Account Departure Logged',
+        `**User:** <@${member.user.id}> (\`${member.user.id}\`)\n**Tag:** \`${member.user.tag}\``,
+        15548997
+    );
+});
+
+// --- SERVER LOGS ---
+client.on('inviteCreate', async (invite) => {
+    await dispatchLog(
+        invite.guild, 'server', '🎟️ Access Link Generated',
+        `**Creator:** <@${invite.inviter?.id}>\n**Code:** \`${invite.code}\`\n**Channel Routing:** <#${invite.channel?.id}>\n**Lifespan:** Max Uses: \`${invite.maxUses}\` / Expires: <t:${Math.floor(invite.expiresTimestamp / 1000)}:R>`,
+        1752220
+    );
+});
+
+// --- VOICE LOGS ---
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    const guild = oldState.guild;
+    const user = newState.member?.user;
+    if (!user || user.bot) return;
+
+    if (!oldState.channelId && newState.channelId) {
+        await dispatchLog(guild, 'voice', '🔊 Voice Grid Connection established', `**User:** <@${user.id}>\n**Joined Channel:** <#${newState.channelId}>`, 5793266);
+    } else if (oldState.channelId && !newState.channelId) {
+        await dispatchLog(guild, 'voice', '🔇 Voice Grid Connection Severed', `**User:** <@${user.id}>\n**Left Channel:** <#${oldState.channelId}>`, 15548997);
+    } else if (oldState.channelId !== newState.channelId) {
+        await dispatchLog(guild, 'voice', '🎚️ Voice Cluster Channel Swapped', `**User:** <@${user.id}>\n**From:** <#${oldState.channelId}>\n**To:** <#${newState.channelId}>`, 3447003);
+    }
+});
+
+// --- CHANNEL LOGS ---
+client.on('channelCreate', async (channel) => {
+    if (!channel.guild) return;
+    await dispatchLog(channel.guild, 'channel', '🧱 Node Matrix Layer Spawned', `**Channel Created:** <#${channel.id}> (\`${channel.id}\`)\n**Type:** \`${channel.type}\``, 5793266);
+});
+
+client.on('channelDelete', async (channel) => {
+    if (!channel.guild) return;
+    await dispatchLog(channel.guild, 'channel', '💥 Node Matrix Layer Purged', `**Name:** \`${channel.name}\`\n**ID Context:** \`${channel.id}\`\n**Type:** \`${channel.type}\``, 15548997);
+});
+
+// --- ROLE LOGS ---
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    const guild = oldMember.guild;
+    const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
+    const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
+
+    if (addedRoles.size > 0) {
+        for (const [id, role] of addedRoles) {
+            await dispatchLog(guild, 'role', '🛡️ Verification Signature Appended', `**Target User:** <@${newMember.id}>\n**Role Assigned:** <@&${role.id}> (\`${role.id}\`)`, 1752220);
+        }
+    }
+    if (removedRoles.size > 0) {
+        for (const [id, role] of removedRoles) {
+            await dispatchLog(guild, 'role', '🪓 Verification Signature Revoked', `**Target User:** <@${newMember.id}>\n**Role Removed:** <@&${role.id}> (\`${role.id}\`)`, 15548997);
+        }
+    }
+});
+
+// --- MODERATION LOGS ---
+client.on('guildBanAdd', async (ban) => {
+    await dispatchLog(
+        ban.guild, 'mod', '⛔ Network Ban Protocol Enforced',
+        `**Banned Target Account:** <@${ban.user.id}> (\`${ban.user.id}\`)\n**Tag Identity:** \`${ban.user.tag}\`\n\n**Reason Stated:**\n> *${ban.reason || 'No explicit tracking reason specified.'}*`,
+        15548997
+    );
+});
+
+client.on('guildBanRemove', async (ban) => {
+    await dispatchLog(
+        ban.guild, 'mod', '🔓 Network Ban Protocol Rescinded',
+        `**Target Account:** <@${ban.user.id}> (\`${ban.user.id}\`)\n**Tag Identity:** \`${ban.user.tag}\``,
+        5793266
+    );
+});
+
+client.login(process.env.DISCORD_TOKEN);
