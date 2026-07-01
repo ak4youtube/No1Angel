@@ -31,19 +31,16 @@ const client = new Client({
     ]
 });
 
-// Stateful Runtime Memory Maps
-const afkUsers = new Map();       // userID -> { reason: string, timestamp: number }
-const notifyQueue = new Map();     // afkUserID -> Set(userIDs to notify)
-const infractions = new Map();    // userID -> warningCount (int)
+const afkUsers = new Map();       
+const notifyQueue = new Map();     
+const infractions = new Map();    
 
-// Helper function to dynamically locate logged target channels inside No1Angel Logs category
 async function getLogChannel(guild, channelName) {
     const category = guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name === 'No1Angel Logs');
     if (!category) return null;
     return guild.channels.cache.find(c => c.type === ChannelType.GuildText && c.name === channelName && c.parentId === category.id);
 }
 
-// Helper function to drop logs safely into the system
 async function dispatchLog(guild, channelName, embed) {
     try {
         const logChannel = await getLogChannel(guild, channelName);
@@ -61,38 +58,30 @@ client.on('messageCreate', async (message) => {
 
     const authorId = message.author.id;
 
-    // --- Return State: Clear AFK ---
     if (afkUsers.has(authorId)) {
         afkUsers.delete(authorId);
         
-        const welcomeEmbed = new EmbedBuilder()
-            .setTitle('🟢 Welcome Back!')
-            .setDescription(`Welcome back ${message.author}, your AFK status has been cleared.`)
-            .setColor(0x57F287)
-            .setTimestamp();
+        const containerMessage = `>>> 🟢 **WELCOME BACK!**\n` +
+            `👋 Welcome back ${message.author}! Your **AFK Status** has been automatically revoked.\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
             
-        const reply = await message.channel.send({ embeds: [welcomeEmbed] });
+        const reply = await message.channel.send({ content: containerMessage });
         setTimeout(() => reply.delete().catch(() => {}), 8000);
 
-        // Process Notification Queue
         if (notifyQueue.has(authorId)) {
             const usersToNotify = notifyQueue.get(authorId);
             usersToNotify.forEach(async (id) => {
                 try {
                     const user = await client.users.fetch(id);
-                    const alertEmbed = new EmbedBuilder()
-                        .setTitle('🟢 User Return Notification')
-                        .setDescription(`**${message.author.username}** has returned and is active in **${message.guild.name}**.`)
-                        .setColor(0x57F287)
-                        .setTimestamp();
-                    await user.send({ embeds: [alertEmbed] });
+                    const alertContainer = `>>> 🔔 **USER RETURN ALERT**\n` +
+                        `👤 **${message.author.username}** has returned and is active in server: **${message.guild.name}**.`;
+                    await user.send({ content: alertContainer });
                 } catch {}
             });
             notifyQueue.delete(authorId);
         }
     }
 
-    // --- Interception State: Tagging an AFK User ---
     if (message.mentions.users.size > 0) {
         for (const [id, user] of message.mentions.users) {
             if (afkUsers.has(id)) {
@@ -100,11 +89,10 @@ client.on('messageCreate', async (message) => {
                 
                 const afkEmbed = new EmbedBuilder()
                     .setTitle('📌 User is Currently Away')
-                    .setDescription(`**${user.username}** is currently AFK:\n👉 *${details.reason}*\n\nChoose an action below to connect with them:`)
+                    .setDescription(`>>> **${user.username}** went AFK:\n\n💬 *"${details.reason}"*\n\nChoose an action below to connect with them:`)
                     .setColor(0x3498DB)
                     .setFooter({ text: 'No1Angel Interaction Hub' });
 
-                // Interactive Buttons
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId(`afk_message_${id}`)
@@ -126,93 +114,121 @@ client.on('messageCreate', async (message) => {
 });
 
 // ----------------------------------------------------------------
-// Multi-Stream Audit Logger Events
+// Multi-Stream Highly Informative Audit Logger Events
 // ----------------------------------------------------------------
 
-// Message Deletion Log
 client.on('messageDelete', async (message) => {
     if (message.partial || !message.guild || message.author?.bot) return;
     const embed = new EmbedBuilder()
-        .setTitle('🗑️ Message Deleted')
+        .setTitle('🗑️ Advanced Audit Log: Message Purged')
         .setColor(0xED4245)
-        .addFields(
-            { name: 'Author', value: `${message.author} (\`${message.author.id}\`)`, inline: true },
-            { name: 'Channel', value: `${message.channel}`, inline: true },
-            { name: 'Content', value: message.content || '_No readable text content_' }
+        .setDescription(
+            `🔹 **Author Profile:** ${message.author} (\`${message.author.id}\`)\n` +
+            `🔹 **Channel Source:** ${message.channel} (\`${message.channel.id}\`)\n` +
+            `🔹 **Created At:** <t:${Math.floor(message.createdTimestamp / 1000)}:F>\n\n` +
+            `📝 **Raw Captured Message Contents:**\n\`\`\`\n${message.content || '[Attachment / Embed File Data Only]'}\n\`\`\``
         )
         .setTimestamp();
     await dispatchLog(message.guild, 'no1angel-message-logs', embed);
 });
 
-// Message Modification Log
 client.on('messageUpdate', async (oldMessage, newMessage) => {
     if (oldMessage.partial || !oldMessage.guild || oldMessage.author?.bot) return;
     if (oldMessage.content === newMessage.content) return;
 
     const embed = new EmbedBuilder()
-        .setTitle('📝 Message Edited')
+        .setTitle('📝 Advanced Audit Log: Message Modification Intercepted')
         .setColor(0xFEE75C)
-        .addFields(
-            { name: 'Author', value: `${oldMessage.author} (\`${oldMessage.author.id}\`)`, inline: true },
-            { name: 'Channel', value: `${oldMessage.channel}`, inline: true },
-            { name: 'Before', value: oldMessage.content || '_None_' },
-            { name: 'After', value: newMessage.content || '_None_' }
+        .setDescription(
+            `🔹 **Author Profile:** ${oldMessage.author} (\`${oldMessage.author.id}\`)\n` +
+            `🔹 **Channel Source:** ${oldMessage.channel} (\`${oldMessage.channel.id}\`)\n` +
+            `🔹 **Message Permanent URL:** [Jump to Message](${newMessage.url})\n\n` +
+            `📉 **Prior Content State:**\n\`\`\`\n${oldMessage.content || '_No readable text string_'}\n\`\`\`\n` +
+            `📈 **New Content State:**\n\`\`\`\n${newMessage.content || '_No readable text string_'}\n\`\`\``
         )
         .setTimestamp();
     await dispatchLog(oldMessage.guild, 'no1angel-message-logs', embed);
 });
 
-// Member Joining Log
 client.on('guildMemberAdd', async (member) => {
     const embed = new EmbedBuilder()
-        .setTitle('📥 Member Joined')
+        .setTitle('📥 Advanced Audit Log: New Identity Verification')
         .setColor(0x57F287)
         .setThumbnail(member.user.displayAvatarURL())
-        .addFields(
-            { name: 'User', value: `${member.user.tag} (${member})`, inline: true },
-            { name: 'Account Age', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true }
+        .setDescription(
+            `🔹 **Identity Name:** ${member.user.tag}\n` +
+            `🔹 **Global Unique ID:** \`${member.id}\`\n` +
+            `🔹 **Mention Token:** ${member}\n\n` +
+            `📆 **Discord Registration Age:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:F> (<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>)\n` +
+            `🧬 **Total Server Member Count:** \`${member.guild.memberCount}\``
         )
         .setTimestamp();
     await dispatchLog(member.guild, 'no1angel-member-logs', embed);
 });
 
-// Member Leaving Log
 client.on('guildMemberRemove', async (member) => {
     const embed = new EmbedBuilder()
-        .setTitle('📤 Member Left')
+        .setTitle('📤 Advanced Audit Log: Identity Departed Guild')
         .setColor(0xED4245)
-        .addFields(
-            { name: 'User', value: `${member.user.tag} (\`${member.id}\`)`, inline: true }
+        .setDescription(
+            `🔹 **Identity Name:** \`${member.user.tag}\`\n` +
+            `🔹 **Global Unique ID:** \`${member.id}\`\n` +
+            `🔹 **Mention Token:** ${member}\n\n` +
+            `📆 **Server Join Date Was:** ${member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:F>` : '`Cached Data Corrupted`'}\n` +
+            `📉 **Remaining Active Population:** \`${member.guild.memberCount}\``
         )
         .setTimestamp();
     await dispatchLog(member.guild, 'no1angel-member-logs', embed);
 });
 
-// Voice State Log
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const guild = oldState.guild;
     const member = oldState.member;
+    if (!member) return;
+
     let embed = new EmbedBuilder().setTimestamp().setAuthor({ name: member.user.tag, iconURL: member.user.displayAvatarURL() });
 
     if (!oldState.channelId && newState.channelId) {
-        embed.setTitle('🔊 Voice Joined').setColor(0x57F287).setDescription(`${member} connected to ${newState.channel}`);
+        embed.setTitle('🔊 Advanced Audit Log: Voice Interface Connected')
+            .setColor(0x57F287)
+            .setDescription(
+                `🔹 **User Identity:** ${member} (\`${member.id}\`)\n` +
+                `📥 **Target Allocation Room:** \`${newState.channel?.name}\` (\`${newState.channelId}\`)\n` +
+                `👥 **Connected Users Inside Room:** \`${newState.channel?.members.size}\``
+            );
     } else if (oldState.channelId && !newState.channelId) {
-        embed.setTitle('🔇 Voice Left').setColor(0xED4245).setDescription(`${member} disconnected from ${oldState.channel}`);
+        embed.setTitle('🔇 Advanced Audit Log: Voice Interface Disconnected')
+            .setColor(0xED4245)
+            .setDescription(
+                `🔹 **User Identity:** ${member} (\`${member.id}\`)\n` +
+                `📤 **Disconnected Room:** \`${oldState.channel?.name}\` (\`${oldState.channelId}\`)`
+            );
     } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
-        embed.setTitle('🔀 Voice Switch').setColor(0x3498DB).setDescription(`${member} moved from ${oldState.channel} to ${newState.channel}`);
+        embed.setTitle('🔀 Advanced Audit Log: Voice Vector Handshake Routing')
+            .setColor(0x3498DB)
+            .setDescription(
+                `🔹 **User Identity:** ${member} (\`${member.id}\`)\n\n` +
+                `❌ **Old Access Point:** \`${oldState.channel?.name}\` (\`${oldState.channelId}\`)\n` +
+                `➔ **New Access Point:** \`${newState.channel?.name}\` (\`${newState.channelId}\`)\n\n` +
+                `👥 **Target Room Headcount:** \`${newState.channel?.members.size}\` Users`
+            );
     } else {
-        return; // Filter out local mute/deafens
+        return; // Filter out system mutes
     }
     await dispatchLog(guild, 'no1angel-voice-logs', embed);
 });
 
-// Channel Tracking Log
 client.on('channelCreate', async (channel) => {
     if (!channel.guild) return;
     const embed = new EmbedBuilder()
-        .setTitle('🆕 Channel Created')
+        .setTitle('🆕 Advanced Audit Log: Interface Pipeline Manifested')
         .setColor(0x57F287)
-        .setDescription(`Channel ${channel} (\`${channel.id}\`) of type **${channel.type}** was spawned.`)
+        .setDescription(
+            `🔹 **Channel Designation:** ${channel} (\`#${channel.name}\`)\n` +
+            `🔹 **Unique Allocation ID:** \`${channel.id}\`\n` +
+            `🔹 **Pipeline Type Matrix:** \`${ChannelType[channel.type]}\` (Type \`${channel.type}\`)\n` +
+            `📂 **Category Parent Shell:** \`${channel.parent ? channel.parent.name : 'Independent Framework'}\``
+        )
         .setTimestamp();
     await dispatchLog(channel.guild, 'no1angel-channel-logs', embed);
 });
@@ -220,28 +236,42 @@ client.on('channelCreate', async (channel) => {
 client.on('channelDelete', async (channel) => {
     if (!channel.guild) return;
     const embed = new EmbedBuilder()
-        .setTitle('❌ Channel Deleted')
+        .setTitle('❌ Advanced Audit Log: Interface Pipeline Terminated')
         .setColor(0xED4245)
-        .setDescription(`Channel **#${channel.name}** (\`${channel.id}\`) was removed from the server.`)
+        .setDescription(
+            `🔹 **Legacy Channel Name:** \`#${channel.name}\`\n` +
+            `🔹 **Legacy Target ID:** \`${channel.id}\`\n` +
+            `🔹 **Pipeline Type Matrix:** \`${ChannelType[channel.type]}\` (Type \`${channel.type}\`)\n` +
+            `📂 **Category Shell Context:** \`${channel.parentId || 'Independent Global Layer'}\``
+        )
         .setTimestamp();
     await dispatchLog(channel.guild, 'no1angel-channel-logs', embed);
 });
 
-// Role State Log
 client.on('roleCreate', async (role) => {
     const embed = new EmbedBuilder()
-        .setTitle('🟢 Role Created')
+        .setTitle('🟢 Advanced Audit Log: Cryptographic Permissions Matrix Role Spawned')
         .setColor(0x57F287)
-        .setDescription(`Role **${role.name}** (\`${role.id}\`) created.`)
+        .setDescription(
+            `🔹 **Role Registry Label:** \`${role.name}\` (${role})\n` +
+            `🔹 **Unique Access ID Token:** \`${role.id}\`\n` +
+            `🎨 **Color Identifier Index:** \`${role.hexColor}\` (Int: \`${role.color}\`)\n` +
+            `📊 **Hierarchy Layer Level:** Position \`${role.position}\` of server architecture`
+        )
         .setTimestamp();
     await dispatchLog(role.guild, 'no1angel-role-logs', embed);
 });
 
 client.on('roleDelete', async (role) => {
     const embed = new EmbedBuilder()
-        .setTitle('🔴 Role Deleted')
+        .setTitle('🔴 Advanced Audit Log: Cryptographic Role System Terminated')
         .setColor(0xED4245)
-        .setDescription(`Role **${role.name}** (\`${role.id}\`) was deleted.`)
+        .setDescription(
+            `🔹 **Destroyed Registry Label:** \`${role.name}\`\n` +
+            `🔹 **Destroyed Access ID Token:** \`${role.id}\`\n` +
+            `🎨 **Color Index Cleaned:** \`${role.hexColor}\` (Int: \`${role.color}\`)\n` +
+            `📊 **Prior Layer Level:** Position \`${role.position}\` across core server`
+        )
         .setTimestamp();
     await dispatchLog(role.guild, 'no1angel-role-logs', embed);
 });
@@ -259,11 +289,7 @@ client.on('ready', async () => {
         new SlashCommandBuilder().setName('userinfo').setDescription('Displays technical metadata regarding a user account.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)),
         new SlashCommandBuilder().setName('serverinfo').setDescription('Shows an analytical data snapshot of the current server.'),
         new SlashCommandBuilder().setName('status').setDescription('[OWNER ONLY] Dynamically update the bot\'s custom playing status.').addStringOption(opt => opt.setName('text').setDescription('The new status text for the bot').setRequired(true)),
-        
-        // Automated Category Matrix Generator
         new SlashCommandBuilder().setName('autologs').setDescription('Automatically configures the No1Angel Logs category suite.').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-        // Manual Moderation Core
         new SlashCommandBuilder().setName('history').setDescription('Displays a specified users session infractions.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
         new SlashCommandBuilder().setName('warn').setDescription('Officially warns a user for a rule violation.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for warning').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
         new SlashCommandBuilder().setName('mute').setDescription('Temporarily places a member on timeout.').addUserOption(opt => opt.setName('target').setDescription('Select user').setRequired(true)).addIntegerOption(opt => opt.setName('minutes').setDescription('Duration of timeout in minutes').setRequired(true)).addStringOption(opt => opt.setName('reason').setDescription('Reason for mute')).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
@@ -290,19 +316,17 @@ client.on('ready', async () => {
 // Interaction Engine Component & Command Routing Router
 // ----------------------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
-    
-    // --- Context Routing Component: Interactive Buttons & Modals ---
     if (interaction.isButton()) {
         const [prefix, action, targetId] = interaction.customId.split('_');
         if (prefix !== 'afk') return;
 
         if (action === 'notify') {
             if (interaction.user.id === targetId) {
-                return interaction.reply({ content: '❌ You cannot sign up for your own return alerts.', ephemeral: true });
+                return interaction.reply({ content: '>>> ❌ **SYSTEM SECURITY FAULT:**\nYou cannot sign up for return alerts directed to yourself.', ephemeral: true });
             }
             if (!notifyQueue.has(targetId)) notifyQueue.set(targetId, new Set());
             notifyQueue.get(targetId).add(interaction.user.id);
-            return interaction.reply({ content: '🔔 Connection Lock Registered! I will private message you when they send a message.', ephemeral: true });
+            return interaction.reply({ content: '>>> 🔔 **CONNECTION LOCK REGISTERED!**\nI will send you a DM as soon as this user wakes up their messaging interface.', ephemeral: true });
         }
 
         if (action === 'message') {
@@ -333,61 +357,81 @@ client.on('interactionCreate', async (interaction) => {
                 const targetUser = await client.users.fetch(targetId);
                 const dmEmbed = new EmbedBuilder()
                     .setTitle('📬 New Offline Message Left for You')
-                    .setDescription(`While you were marked away, **${interaction.user.tag}** left a message for you from channel **#${interaction.channel.name}**:`)
-                    .addFields({ name: 'Message Content', value: `"${msgContent}"` })
+                    .setDescription(`>>> While you were marked away, **${interaction.user.tag}** left a message for you from channel **#${interaction.channel.name}**:\n\n💬 *"${msgContent}"*`)
                     .setColor(0x9B59B6)
                     .setTimestamp();
                 
                 await targetUser.send({ embeds: [dmEmbed] });
-                return interaction.editReply({ content: '✅ Message delivered directly to their private inbox.' });
+                return interaction.editReply({ content: '>>> ✅ **DISPATCH COMPLETED:**\nMessage delivered directly to their private inbox securely.' });
             } catch {
-                return interaction.editReply({ content: '❌ Unable to send a direct message. The target user might have their private messages disabled.' });
+                return interaction.editReply({ content: '>>> ❌ **DISPATCH ERROR:**\nUnable to send direct message. The recipient might have locked DMs.' });
             }
         }
     }
 
-    // --- Slash Command Router Execution ---
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, channel, guild } = interaction;
 
     // --- /help ---
     if (commandName === 'help') {
-        const embed = new EmbedBuilder()
-            .setTitle('📚 Mod Bot Command Matrix Directory')
-            .setColor(0x3498DB)
-            .addFields(
-                { name: '🌐 General Utilities', value: '`/help`, `/afk`, `/avatar`, `/userinfo`, `/serverinfo`', inline: false },
-                { name: '🛡️ Moderation Desk', value: '`/history`, `/warn`, `/mute`, `/unmute`, `/warnclear`, `/kick`, `/ban`, `/unban`', inline: false },
-                { name: '🧹 Management & Category Setup', value: '`/purge`, `/lock`, `/unlock`, `/slowmode`, `/autologs`', inline: false },
-                { name: '⚙️ Owner Only', value: '`/status`', inline: false }
-            );
-        return interaction.reply({ embeds: [embed] });
+        const out = `>>> ⚔️ **NO1ANGEL ARCHITECTURE PROTOCOLS & USER DIRECTORY**\n` +
+            `Welcome to the core operations handbook. Commands must be initialized with a slash (\`/\`).\n\n` +
+            `🌐 **GENERAL COMMANDS SYSTEM** (Public Utilities)\n` +
+            `🔹 \`/help\` — Displays this structural operations system layout.\n` +
+            `🔹 \`/afk [reason]\` — Temporarily toggles your away profile state (Clears automatically upon your next message entry).\n` +
+            `🔹 \`/avatar <target>\` — Fetches a high-resolution canvas link to any chosen account icon.\n` +
+            `🔹 \`/userinfo <target>\` — Queries metadata registries for account registration dates.\n` +
+            `🔹 \`/serverinfo\` — Generates diagnostic analytics regarding active headcount populations.\n\n` +
+            `🛡️ **ADMINISTRATIVE & MODERATION MATRIX** (Permissions Required)\n` +
+            `🔸 \`/history <target>\` — Pulls data logs detailing current local session warnings.\n` +
+            `🔸 \`/warn <target> <reason>\` — Registers a permanent warning strike flag to an identity databank.\n` +
+            `🔸 \`/mute <target> <minutes> [reason]\` — Triggers a cryptographic network timeout restriction.\n` +
+            `🔸 \`/unmute <target>\` — Clears active restriction states prior to schedule expiration clocks.\n` +
+            `🔸 \`/warnclear <target>\` — Flushes local infraction arrays back to clean base parity.\n` +
+            `🔸 \`/kick <target> [reason]\` — Forces an identity connection disconnect packet off the server guild.\n` +
+            `🔸 \`/ban <target> [reason]\` — Purges access profiles and permanently blocks account handshakes.\n` +
+            `🔸 \`/unban <userid>\` — Strips a specific user identifier string off the global ban registry.\n\n` +
+            `🧹 **INFRASTRUCTURE MANAGEMENT LAYERS** (Staff Utilities)\n` +
+            `🔹 \`/purge <amount>\` — Drops up to 100 historical message strings from local channel lines.\n` +
+            `🔹 \`/lock\` — Freezes messaging write permissions on the immediate room coordinate.\n` +
+            `🔹 \`/unlock\` — Synchronizes and re-establishes default message transmission rates.\n` +
+            `🔹 \`/slowmode <seconds>\` — Throttles pipeline entry speeds by forcing write cooldown clocks.\n` +
+            `🔹 \`/autologs\` — Automatically builds, assigns categories to, and deploys the entire logging suite.\n\n` +
+            `📖 **OPERATIONS SYNTAX GUIDE**\n` +
+            `• Angle parameters \`< parameter >\` imply **Strictly Mandatory Data Inputs**.\n` +
+            `• Square parameters \`[ parameter ]\` mean the parameter can be **Safely Left Blank**.\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        return interaction.reply({ content: out });
     }
 
     // --- /afk ---
     if (commandName === 'afk') {
         const reason = options.getString('reason') || 'Away from keyboard';
         afkUsers.set(interaction.user.id, { reason, timestamp: Date.now() });
-        const embed = new EmbedBuilder()
-            .setDescription(`💤 ${interaction.user} is now marked **AFK**: *${reason}*`)
-            .setColor(0x3498DB);
-        return interaction.reply({ embeds: [embed] });
+        const out = `>>> 💤 **AFK ANNOUNCEMENT CONTAINER**\n` +
+            `👤 **Member:** ${interaction.user}\n` +
+            `📝 **Reason Matrix:** *"${reason}"*\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        return interaction.reply({ content: out });
     }
 
-    // --- /status [OWNER ONLY] ---
+    // --- /status ---
     if (commandName === 'status') {
         if (interaction.user.id !== OWNER_ID) {
-            return interaction.reply({ content: '⛔ Security Fault: Reserved for deployment bot owner.', ephemeral: true });
+            return interaction.reply({ content: '>>> ⛔ **ACCESS VIOLATION:**\nReserved configuration command blocked for non-owners.', ephemeral: true });
         }
         const text = options.getString('text');
         client.user.setActivity(text, { type: 0 });
-        return interaction.reply({ content: `✅ Presence updated to: **Playing ${text}**` });
+        return interaction.reply({ content: `>>> ✅ **PRESENCE ENGINE UPDATE:**\nSystem status activity text set to **Playing ${text}**.` });
     }
 
     // --- /avatar ---
     if (commandName === 'avatar') {
         const target = options.getUser('target');
-        const embed = new EmbedBuilder().setTitle(`${target.username}'s Avatar`).setImage(target.displayAvatarURL({ size: 1024 })).setColor(0x3498DB);
+        const embed = new EmbedBuilder()
+            .setTitle(`🖼️ Profile Avatar: ${target.username}`)
+            .setImage(target.displayAvatarURL({ size: 1024 }))
+            .setColor(0x3498DB);
         return interaction.reply({ embeds: [embed] });
     }
 
@@ -395,23 +439,26 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'userinfo') {
         const target = options.getUser('target');
         const member = await guild.members.fetch(target.id).catch(() => null);
-        const embed = new EmbedBuilder().setTitle(`👤 User Details: ${target.username}`).setColor(0x9B59B6)
-            .addFields(
-                { name: 'User ID', value: `\`${target.id}\``, inline: true },
-                { name: 'Created Profile', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:R>`, inline: true },
-                { name: 'Server Joined', value: member ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'Not in server', inline: true }
-            );
-        return interaction.reply({ embeds: [embed] });
+        const out = `>>> 👤 **IDENTITY RECONNAISSANCE MATRIX REPORT**\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `🔹 **Target Account:** ${target} (\`${target.tag}\`)\n` +
+            `🔹 **User Registration Unique ID:** \`${target.id}\`\n` +
+            `📆 **Discord Profiling Inception:** <t:${Math.floor(target.createdTimestamp / 1000)}:F> (<t:${Math.floor(target.createdTimestamp / 1000)}:R>)\n` +
+            `📥 **Guild Server Deployment Date:** ${member ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '`Not present in guild data`'}\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        return interaction.reply({ content: out });
     }
 
     // --- /serverinfo ---
     if (commandName === 'serverinfo') {
-        const embed = new EmbedBuilder().setTitle(`📊 Server Profile: ${guild.name}`).setColor(0xE67E22)
-            .addFields(
-                { name: 'Total Accounts', value: `\`${guild.memberCount}\``, inline: true },
-                { name: 'Created Date', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`, inline: false }
-            );
-        return interaction.reply({ embeds: [embed] });
+        const out = `>>> 📊 **GUILD SERVER INFRASTRUCTURE PROFILE ANALYTICS**\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `🔹 **Guild Server Identity:** \`${guild.name}\`\n` +
+            `🔹 **Internal Databank Target ID:** \`${guild.id}\`\n` +
+            `👥 **Total Synced Population Headcount:** \`${guild.memberCount}\` Registered Accounts\n` +
+            `📆 **System Deployment Genesis Date:** <t:${Math.floor(guild.createdTimestamp / 1000)}:F>\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        return interaction.reply({ content: out });
     }
 
     // --- /autologs ---
@@ -442,10 +489,11 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            const cleanSuccess = new EmbedBuilder().setTitle('⚙️ Suite Deployment Completed').setDescription('The **No1Angel Logs** framework has been successfully generated and secured. All logging operations are now routing updates.').setColor(0x57F287);
-            return interaction.editReply({ embeds: [cleanSuccess] });
+            const out = `>>> ⚙️ **SUITE AUTOMATION ARCHITECTURE SETUP COMPLETE**\n` +
+                `The complete **No1Angel Logs** structural core and nested data feeds have been deployment-verified.`;
+            return interaction.editReply({ content: out });
         } catch (err) {
-            return interaction.editReply({ content: `⚠️ Deployment Failed: ${err.message}` });
+            return interaction.editReply({ content: `>>> ⚠️ **AUTOMATION SETUP ABORT EXCEPTION:**\n${err.message}` });
         }
     }
 
@@ -453,13 +501,18 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'history') {
         const target = options.getUser('target');
         const count = infractions.get(target.id) || 0;
-        const embed = new EmbedBuilder().setDescription(`📊 **${target.username}** has accrued \`${count}\` manual session warnings.`).setColor(0x3498DB);
-        return interaction.reply({ embeds: [embed] });
+        const out = `>>> 📊 **INFRACTION MANAGEMENT REGISTRY SUMMARY**\n` +
+            `👤 **Target Account:** ${target}\n` +
+            `🔢 **Active Session Violation Count:** \`${count}\` Incident Flags.`;
+        return interaction.reply({ content: out });
     }
 
-    // --- Manual Command Log Dispatch Helper ---
     async function logModAction(title, color, description) {
-        const embed = new EmbedBuilder().setTitle(title).setColor(color).setDescription(description).setTimestamp();
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setColor(color)
+            .setDescription(description)
+            .setTimestamp();
         await dispatchLog(guild, 'no1angel-mod-logs', embed);
     }
 
@@ -470,9 +523,12 @@ client.on('interactionCreate', async (interaction) => {
         const count = (infractions.get(target.id) || 0) + 1;
         infractions.set(target.id, count);
 
-        const embed = new EmbedBuilder().setDescription(`⚠️ ${target} has been warned for: **${reason}** (Total Session Count: \`${count}\`)`).setColor(0xFEE75C);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('🔨 Incident Logged: Warning Issued', 0xFEE75C, `**Target:** ${target}\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}\n**Session Warnings:** ${count}`);
+        const out = `>>> ⚠️ **SECURITY MATRIX WARNING LOG ACTION**\n` +
+            `👤 **Sanctioned User:** ${target}\n` +
+            `📝 **Reason Logged:** \`${reason}\`\n` +
+            `🔢 **Active Session Tracker Threshold:** \`${count}\` Flags Issued.`;
+        await interaction.reply({ content: out });
+        return logModAction('🔨 Incident Logged: Warning Issued', 0xFEE75C, `>>> **Target:** ${target}\n**Moderator:** ${interaction.user}\n**Reason Given:** ${reason}\n**Total Tracker:** \`${count}\``);
     }
 
     // --- /mute ---
@@ -482,12 +538,15 @@ client.on('interactionCreate', async (interaction) => {
         const reason = options.getString('reason') || 'No explicit tracking reason specified.';
         const member = await guild.members.fetch(targetUser.id).catch(() => null);
 
-        if (!member) return interaction.reply({ content: '❌ Target profile missing.', ephemeral: true });
+        if (!member) return interaction.reply({ content: '>>> ❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.', ephemeral: true });
         await member.timeout(minutes * 60 * 1000, reason);
 
-        const embed = new EmbedBuilder().setDescription(`🔇 **${targetUser.username}** has been placed on timeout for ${minutes} minutes.`).setColor(0xED4245);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('🔇 Incident Logged: Timeout Applied', 0xED4245, `**Target:** ${targetUser}\n**Moderator:** ${interaction.user}\n**Duration:** ${minutes} minutes\n**Reason:** ${reason}`);
+        const out = `>>> 🔇 **TIMEOUT RESTRICTION CONTAINER CONFIGURED**\n` +
+            `👤 **Target Restricted User:** \`${targetUser.username}\` (${targetUser})\n` +
+            `⏳ **Duration Window Assigned:** \`${minutes}\` Minutes\n` +
+            `📝 **Reason Node:** \`${reason}\``;
+        await interaction.reply({ content: out });
+        return logModAction('🔇 Incident Logged: Timeout Applied', 0xED4245, `>>> **Target Member:** ${targetUser}\n**Action Taken By:** ${interaction.user}\n**Duration Assigned:** ${minutes} min\n**Reason:** ${reason}`);
     }
 
     // --- /unmute ---
@@ -495,21 +554,23 @@ client.on('interactionCreate', async (interaction) => {
         const targetUser = options.getUser('target');
         const member = await guild.members.fetch(targetUser.id).catch(() => null);
 
-        if (!member) return interaction.reply({ content: '❌ Target profile missing.', ephemeral: true });
+        if (!member) return interaction.reply({ content: '>>> ❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.', ephemeral: true });
         await member.timeout(null);
 
-        const embed = new EmbedBuilder().setDescription(`🔊 Active timeout lifted early from **${targetUser.username}**.`).setColor(0x57F287);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('🔊 Incident Logged: Timeout Lifted', 0x57F287, `**Target:** ${targetUser}\n**Moderator:** ${interaction.user}`);
+        const out = `>>> 🔊 **RESTRICTION OVERRIDE: TIMEOUT STRIPPED EARLY**\n` +
+            `👤 **Target Restored User:** \`${targetUser.username}\` has been re-allocated text communication capabilities.`;
+        await interaction.reply({ content: out });
+        return logModAction('🔊 Incident Logged: Timeout Lifted', 0x57F287, `>>> **Target Member:** ${targetUser}\n**Action Taken By:** ${interaction.user}`);
     }
 
     // --- /warnclear ---
     if (commandName === 'warnclear') {
         const target = options.getUser('target');
         infractions.set(target.id, 0);
-        const embed = new EmbedBuilder().setDescription(`🔄 Purged session infraction counter back to zero for **${target.username}**.`).setColor(0x57F287);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('🔄 History Cleared', 0x3498DB, `**Target:** ${target}\n**Moderator:** ${interaction.user}`);
+        const out = `>>> 🔄 **INCIDENT TRACKER FILE PURGED RE-INDEX**\n` +
+            `👤 **Target Account:** \`${target.username}\` has had all active temporary session points set back to zero.`;
+        await interaction.reply({ content: out });
+        return logModAction('🔄 History Cleared', 0x3498DB, `>>> **Target Member:** ${target}\n**Action Taken By:** ${interaction.user}`);
     }
 
     // --- /kick ---
@@ -518,12 +579,14 @@ client.on('interactionCreate', async (interaction) => {
         const reason = options.getString('reason') || 'No explicit context parsed.';
         const member = await guild.members.fetch(targetUser.id).catch(() => null);
 
-        if (!member) return interaction.reply({ content: '❌ Target profile missing.', ephemeral: true });
+        if (!member) return interaction.reply({ content: '>>> ❌ **TARGET VERIFICATION FAULT:** Profile database parsing error.', ephemeral: true });
         await member.kick(reason);
 
-        const embed = new EmbedBuilder().setDescription(`👢 **${targetUser.username}** has been disconnected from the server environment.`).setColor(0xE67E22);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('👢 Incident Logged: Kick Executed', 0xE67E22, `**Target:** ${targetUser.tag}\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}`);
+        const out = `>>> 👢 **SERVER ENVIRONMENT FORCEFUL DISCONNECT DISPATCHED**\n` +
+            `👤 **Expelled User Profile:** \`${targetUser.username}\` (${targetUser})\n` +
+            `📝 **Reason Context Node:** \`${reason}\``;
+        await interaction.reply({ content: out });
+        return logModAction('👢 Incident Logged: Kick Executed', 0xE67E22, `>>> **Target Member:** ${targetUser.tag}\n**Action Taken By:** ${interaction.user}\n**Reason:** ${reason}`);
     }
 
     // --- /ban ---
@@ -532,9 +595,11 @@ client.on('interactionCreate', async (interaction) => {
         const reason = options.getString('reason') || 'No explicit context parsed.';
 
         await guild.members.ban(targetUser.id, { reason });
-        const embed = new EmbedBuilder().setDescription(`🔨 **${targetUser.username}** has been permanently banned from the server.`).setColor(0xED4245);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('🔨 Incident Logged: Ban Executed', 0xED4245, `**Target:** ${targetUser.tag} (\`${targetUser.id}\`)\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}`);
+        const out = `>>> 🔨 **PERMANENT GUILD INTERFACES EXCLUSION BAN BANISHED**\n` +
+            `👤 **Banned Core Identity:** \`${targetUser.username}\` (${targetUser})\n` +
+            `📝 **Reason Context Node:** \`${reason}\``;
+        await interaction.reply({ content: out });
+        return logModAction('🔨 Incident Logged: Ban Executed', 0xED4245, `>>> **Target User:** ${targetUser.tag} (\`${targetUser.id}\`)\n**Action Taken By:** ${interaction.user}\n**Reason:** ${reason}`);
     }
 
     // --- /unban ---
@@ -542,48 +607,53 @@ client.on('interactionCreate', async (interaction) => {
         const userId = options.getString('userid');
         try {
             await guild.members.unban(userId);
-            const embed = new EmbedBuilder().setDescription(`🔓 Lifted server restriction from identity ID: \`${userId}\`.`).setColor(0x57F287);
-            await interaction.reply({ embeds: [embed] });
-            return logModAction('🔓 Incident Logged: Unban Executed', 0x57F287, `**Target ID:** \`${userId}\`\n**Moderator:** ${interaction.user}`);
+            const out = `>>> 🔓 **RESTRICTION OVERRIDE: ID MANUALLY REVOKED FROM BANLIST**\n` +
+                `👤 **Identity ID Hash:** \`${userId}\` configuration cleared back into user entry pool.`;
+            await interaction.reply({ content: out });
+            return logModAction('🔓 Incident Logged: Unban Executed', 0x57F287, `>>> **Target ID Signature:** \`${userId}\`\n**Action Taken By:** ${interaction.user}`);
         } catch {
-            return interaction.reply({ content: '❌ Identity signature mismatch or ID was never banned.', ephemeral: true });
+            return interaction.reply({ content: '>>> ❌ **UNBAN PIPELINE FAULT:** ID input string mismatch, or matching hash was not present on data ban arrays.', ephemeral: true });
         }
     }
 
     // --- /purge ---
     if (commandName === 'purge') {
         const amount = options.getInteger('amount');
-        if (amount < 1 || amount > 100) return interaction.reply({ content: '❌ Provide bounds between 1 and 100 entries.', ephemeral: true });
+        if (amount < 1 || amount > 100) return interaction.reply({ content: '>>> ❌ **BOUND EVALUATION FAULT:** Stream count boundaries must sit between 1 and 100 indices.', ephemeral: true });
 
         const deleted = await channel.bulkDelete(amount, true).catch(() => []);
-        const embed = new EmbedBuilder().setDescription(`🧹 Successfully dropped \`${deleted.size}\` chat messages cleanly.`).setColor(0x57F287);
-        await interaction.reply({ embeds: [embed], ephemeral: true });
-        return logModAction('🧹 Messages Purged', 0x3498DB, `**Channel:** ${channel}\n**Moderator:** ${interaction.user}\n**Messages Deleted:** ${deleted.size}`);
+        const out = `>>> 🧹 **BULK CHAT SEGMENT DEPLETION CLEANED**\n` +
+            `Dropped \`${deleted.size}\` historical message traces completely from current memory pipelines.`;
+        await interaction.reply({ content: out, ephemeral: true });
+        return logModAction('🧹 Messages Purged', 0x3498DB, `>>> **Channel Target:** ${channel}\n**Action Taken By:** ${interaction.user}\n**Cleaned Lines:** \`${deleted.size}\``);
     }
 
     // --- /lock ---
     if (commandName === 'lock') {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
-        const embed = new EmbedBuilder().setDescription('🔒 **Channel Closed:** Message stream restricted for normal accounts.').setColor(0xED4245);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('🔒 Channel Locked', 0xED4245, `**Channel:** ${channel}\n**Moderator:** ${interaction.user}`);
+        const out = `>>> 🔒 **EMERGENCY CONTAINER: CHANNEL FLOW DISPATCH CRIPPLED**\n` +
+            `Public messaging pathways have been sealed on this specific endpoint coordinate.`;
+        await interaction.reply({ content: out });
+        return logModAction('🔒 Channel Locked', 0xED4245, `>>> **Channel Locked:** ${channel}\n**Action Taken By:** ${interaction.user}`);
     }
 
     // --- /unlock ---
     if (commandName === 'unlock') {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
-        const embed = new EmbedBuilder().setDescription('🔓 **Channel Reopened:** Message streams reset back to default.').setColor(0x57F287);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('🔓 Channel Unlocked', 0x57F287, `**Channel:** ${channel}\n**Moderator:** ${interaction.user}`);
+        const out = `>>> 🔓 **EMERGENCY RESOLVED: CHANNEL ACCESS RETURNED TO PARITY**\n` +
+            `Public default typing protocols have been safely synchronized and re-activated.`;
+        await interaction.reply({ content: out });
+        return logModAction('🔓 Channel Unlocked', 0x57F287, `>>> **Channel Opened:** ${channel}\n**Action Taken By:** ${interaction.user}`);
     }
 
     // --- /slowmode ---
     if (commandName === 'slowmode') {
         const seconds = options.getInteger('seconds');
         await channel.setRateLimitPerUser(seconds);
-        const embed = new EmbedBuilder().setDescription(`⏳ Channel slowmode limit updated to **${seconds}** seconds.`).setColor(0xFEE75C);
-        await interaction.reply({ embeds: [embed] });
-        return logModAction('⏳ Slowmode Cooldown Updated', 0xFEE75C, `**Channel:** ${channel}\n**Moderator:** ${interaction.user}\n**Delay Set:** ${seconds} seconds`);
+        const out = `>>> ⏳ **COOLDOWN SYSTEM INTERVAL RESTATED**\n` +
+            `Users must pause exactly \`${seconds}\` seconds between transmission packets in this room coordinate.`;
+        await interaction.reply({ content: out });
+        return logModAction('⏳ Slowmode Cooldown Updated', 0xFEE75C, `>>> **Channel:** ${channel}\n**Action Taken By:** ${interaction.user}\n**Delay Threshold:** \`${seconds}\` seconds`);
     }
 });
 
