@@ -1,14 +1,22 @@
 {
-  "name": "complete-mod-bot",
-  "version": "1.0.0",
-  "description": "Discord Mod and AI Search Bot",
+  "name": "no1angel-utility-core",
+  "version": "2.0.0",
+  "description": "Premium private utility framework managing custom interactive workflows and No1Angel telemetry loops.",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
+  "keywords": [
+    "discord",
+    "utility",
+    "bot"
+  ],
+  "author": "Owner",
+  "license": "ISC",
   "dependencies": {
-    "@google/genai": "^1.0.0",
-    "discord.js": "^14.15.3"
+    "discord.js": "^14.14.0"
+  },
+  "engines": {
+    "node": ">=16.11.0"
   }
 }
