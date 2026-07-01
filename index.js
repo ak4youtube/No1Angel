@@ -14,14 +14,12 @@ import {
     TextInputStyle,
     ChannelType
 } from 'discord.js';
-import { GoogleGenAI } from '@google/genai';
 
 // ----------------------------------------------------------------
 // Initialization & Core Configurations
 // ----------------------------------------------------------------
 const TOKEN = process.env.DISCORD_TOKEN;
 const OWNER_ID = process.env.OWNER_ID;
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
 const client = new Client({
     intents: [
@@ -32,8 +30,6 @@ const client = new Client({
         GatewayIntentBits.GuildVoiceStates
     ]
 });
-
-const ai = GEMINI_KEY ? new GoogleGenAI({ apiKey: GEMINI_KEY }) : null;
 
 // Stateful Runtime Memory Maps
 const afkUsers = new Map();       // userID -> { reason: string, timestamp: number }
@@ -538,7 +534,7 @@ client.on('interactionCreate', async (interaction) => {
         await guild.members.ban(targetUser.id, { reason });
         const embed = new EmbedBuilder().setDescription(`🔨 **${targetUser.username}** has been permanently banned from the server.`).setColor(0xED4245);
         await interaction.reply({ embeds: [embed] });
-        return logModAction('🔨 Incident Logged: Ban Executed', 0xED4245, `**Target:** ${targetUser.tag} (\ Barbarian \`${targetUser.id}\`)\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}`);
+        return logModAction('🔨 Incident Logged: Ban Executed', 0xED4245, `**Target:** ${targetUser.tag} (\`${targetUser.id}\`)\n**Moderator:** ${interaction.user}\n**Reason:** ${reason}`);
     }
 
     // --- /unban ---
